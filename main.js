@@ -41,11 +41,16 @@ class TightropeGame {
         this.balancePivot = { x: 416, y: this.height - 430 };
 
         this.gameRunning = false;
+        this.gamePaused = false;
         this.distance = 0;
         this.speed = 0.083;
         this.score = 0;
-        this.highScore = localStorage.getItem('tightropeHighScore') || 0;
+        this.highScore = parseInt(localStorage.getItem('tightropeHighScore') || 0);
         this.gameStarted = false;
+
+        // 初始化音效系统
+        this.audioContext = null;
+        this.initAudio();
 
         this.player = {
             x: this.width / 2,
@@ -134,6 +139,57 @@ class TightropeGame {
         this.player.spriteHeight = 120; // 若后续需要按高度定位可用（目前按贴图原始尺寸）
 
         this.init();
+    }
+
+    // 初始化音频系统
+    initAudio() {
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.log('Web Audio API 不支持');
+        }
+    }
+
+    // 播放游戏结束音效（低沉的失败音）
+    playGameOverSound() {
+        if (!this.audioContext) return;
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(100, this.audioContext.currentTime + 0.5);
+        
+        gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.5);
+    }
+
+    // 播放新纪录音效（欢快的成功音）
+    playNewRecordSound() {
+        if (!this.audioContext) return;
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        // 播放上升的音调
+        oscillator.frequency.setValueAtTime(300, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(600, this.audioContext.currentTime + 0.3);
+        oscillator.frequency.exponentialRampToValueAtTime(800, this.audioContext.currentTime + 0.6);
+        
+        gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.8);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.8);
     }
 
     loadManFrames() {
@@ -226,6 +282,7 @@ class TightropeGame {
         const bg_cloud = new Image();
         bg_cloud.onload = onLoaded;
         bg_cloud.src = 'image/bg_cloud.png';
+        
         
         this.images.bg = bg;
         this.images.gs = gs;
@@ -335,8 +392,13 @@ class TightropeGame {
     setupEventListeners() {
         document.addEventListener('keydown', (e) => {
             this.keys[e.code] = true;
-            if (e.code === 'Space' && !this.gameRunning) {
+            if (e.code === 'Space') {
+                e.preventDefault(); // 防止页面滚动
+                if (!this.gameRunning) {
                 this.startGame();
+                } else {
+                    this.togglePause();
+                }
             }
         });
 
@@ -344,9 +406,7 @@ class TightropeGame {
             this.keys[e.code] = false;
         });
 
-        document.getElementById('restartBtn').addEventListener('click', () => {
-            this.restartGame();
-        });
+        // 移除按钮点击事件，现在使用空格键重新开始
 
         // 音频控制事件监听器
         document.getElementById('muteBtn').addEventListener('click', () => {
@@ -362,27 +422,43 @@ class TightropeGame {
 
     startGame() {
         this.gameRunning = true;
+        this.gamePaused = false;
         this.gameStarted = true;
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('gameOver').style.display = 'none';
+        document.getElementById('pauseScreen').style.display = 'none';
         this.resetGame();
         this.initializeLandscape();
         // 开始播放背景音乐（用户交互后）
         setTimeout(() => {
             this.playBackgroundMusic();
         }, 100);
+        this.update();
+    }
+
+    togglePause() {
+        this.gamePaused = !this.gamePaused;
+        if (this.gamePaused) {
+            document.getElementById('pauseScreen').style.display = 'block';
+        } else {
+            document.getElementById('pauseScreen').style.display = 'none';
+            this.update();
+        }
     }
 
     restartGame() {
         this.gameRunning = true;
+        this.gamePaused = false;
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('gameOver').style.display = 'none';
+        document.getElementById('pauseScreen').style.display = 'none';
         this.resetGame();
         this.initializeLandscape();
         // 重新开始播放背景音乐（用户交互后）
         setTimeout(() => {
             this.playBackgroundMusic();
         }, 100);
+        this.update();
     }
 
     resetGame() {
@@ -402,10 +478,11 @@ class TightropeGame {
         this.powerUpSpawnTimer = 0;
         this.activePowerUps = [];
         this.balanceRod.length = this.balanceRod.baseLength ? this.balanceRod.baseLength * 0.78 : 60;
+        this.updateUI();
     }
 
     update() {
-        if (!this.gameRunning) return;
+        if (!this.gameRunning || this.gamePaused) return;
         this.distance += this.speed;
         this.score = Math.floor(this.distance);
         this.updateWind();
@@ -1007,7 +1084,14 @@ class TightropeGame {
     }
 
     getPowerUpColor(type) {
-        const colors = { 'speed': '#FF0000', 'balance': '#FF0000', 'explosion': '#000000', 'rock': '#000000', 'slow': '#000000', 'unbalance': '#000000' };
+        const colors = { 
+            'speed': '#FFD700',     // 速度提升 - 金色
+            'balance': '#FFD700',   // 平衡增强 - 金色
+            'explosion': '#000000', // 爆炸 - 黑色
+            'rock': '#000000',      // 岩石 - 黑色
+            'slow': '#000000',      // 减速 - 黑色
+            'unbalance': '#000000'  // 平衡破坏 - 黑色
+        };
         return colors[type] || '#FFFFFF';
     }
 
@@ -1032,20 +1116,70 @@ class TightropeGame {
         this.gameRunning = false;
         const finalScore = Math.floor(this.distance);
         document.getElementById('finalDistance').textContent = finalScore;
-        if (finalScore > this.highScore) {
+        
+        // 检查是否超过最远距离
+        const isNewRecord = finalScore > this.highScore;
+        const previousHighScore = this.highScore; // 保存之前的最高分
+        
+        // 更新最高分
+        if (isNewRecord) {
             this.highScore = finalScore;
             localStorage.setItem('tightropeHighScore', this.highScore);
+            // 播放新纪录音效
+            this.playNewRecordSound();
+        } else {
+            // 播放游戏结束音效
+            this.playGameOverSound();
         }
+        
+        // 根据是否创造新纪录显示不同信息
+        const titleElement = document.getElementById('gameOverTitle');
+        const messageElement = document.getElementById('gameOverMessage');
+        
+        if (isNewRecord) {
+            titleElement.textContent = '新纪录！';
+            titleElement.classList.add('new-record');
+            messageElement.innerHTML = `
+                <div class="current-distance-box">
+                    <span class="current-distance-text" style="font-size: 1.2em;">你走了 </span><span id="finalDistance">${finalScore}</span><span class="current-distance-unit" style="font-size: 1.2em;"> m</span>
+                </div>
+                <div class="previous-distance-info">
+                    曾经距离 <span id="bestDistanceDisplay">${previousHighScore}</span> m
+                </div>
+            `;
+        } else {
+            titleElement.textContent = '就差一点点！';
+            titleElement.classList.remove('new-record');
+            messageElement.innerHTML = `
+                <div class="current-distance-box">
+                    <span class="current-distance-text" style="font-size: 1.2em;">你走了 </span><span id="finalDistance">${finalScore}</span><span class="current-distance-unit" style="font-size: 1.2em;"> m</span>
+                </div>
+                <div class="previous-distance-info">
+                    最远距离 <span id="bestDistanceDisplay">${this.highScore}</span> m
+                </div>
+            `;
+        }
+        
         document.getElementById('gameOver').style.display = 'block';
         // 停止背景音乐
         this.stopBackgroundMusic();
     }
 
     updateUI() {
-        document.getElementById('distance').textContent = Math.floor(this.distance);
-        document.getElementById('sway').textContent = Math.floor(Math.abs(this.player.sway));
-        document.getElementById('wind').textContent = (this.wind.force * this.wind.direction).toFixed(2);
-        document.getElementById('highScore').textContent = this.highScore;
+        const currentDistance = Math.floor(this.distance);
+        const maxDistance = 6666;
+        const progressPercentage = Math.min((currentDistance / maxDistance) * 100, 100);
+        const bestDistancePercentage = Math.min((this.highScore / maxDistance) * 100, 100);
+        
+        // 更新进度条
+        document.getElementById('progressFill').style.width = progressPercentage + '%';
+        document.getElementById('currentDistanceNumber').textContent = currentDistance;
+        
+        // 更新最佳距离竖线和标签
+        const displayPercentage = Math.max(2, bestDistancePercentage); // 最小显示位置为2%
+        document.getElementById('bestDistanceLine').style.left = displayPercentage + '%';
+        document.getElementById('bestDistanceLabel').style.left = displayPercentage + '%';
+        document.getElementById('bestDistanceLabel').textContent = this.highScore + 'm';
     }
 
     render() {
@@ -1053,7 +1187,6 @@ class TightropeGame {
         this.drawBackground();
         this.drawPlayer();
         this.drawWindIndicator();
-        this.drawSwayIndicator();
         this.drawParticles();
         this.drawPowerUps();
     }
@@ -1085,6 +1218,7 @@ class TightropeGame {
             this.ctx.drawImage(this.images.bg_cloud, 0, 0, this.width, this.height);
         }
     }
+
 
     drawLandscapeElement(element) {
         const x = element.x;
@@ -1175,19 +1309,128 @@ class TightropeGame {
     }
 
     drawWindIndicator() {
-        const x = this.width - 100; const y = 50; const windForce = this.wind.force * this.wind.direction;
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; this.ctx.fillRect(x - 10, y - 20, 80, 40);
-        this.ctx.fillStyle = windForce > 0 ? '#FF6B6B' : '#4ECDC4';
-        const barWidth = Math.abs(windForce) * 60; this.ctx.fillRect(x, y - 5, barWidth, 10);
-        this.ctx.strokeStyle = '#FFF'; this.ctx.lineWidth = 1; this.ctx.beginPath(); this.ctx.moveTo(x + 30, y - 10); this.ctx.lineTo(x + 30, y + 10); this.ctx.stroke();
+        const x = this.width / 2 + 5; // 风力表盘中心X坐标
+        const y = this.height - 250; // 风力表盘中心Y坐标
+        const windForce = this.wind.force * this.wind.direction;
+        
+        // 风力等级（左右各1-3级）
+        const windLevel = Math.min(3, Math.max(1, Math.floor(Math.abs(windForce) * 6) + 1));
+        const radius = 60; // 圆弧半径
+        
+        // 绘制上半圆弧 - 从正中向两边偏移，左右各1-3级
+        const centerAngle = -Math.PI / 2; // 中心角度（正上方）
+        const maxAngle = Math.PI * 0.3; // 左右各54度范围（3级对应）
+        
+        this.ctx.strokeStyle = '#FFF';
+        this.ctx.lineWidth = 4;
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, radius, centerAngle - maxAngle, centerAngle + maxAngle);
+        this.ctx.stroke();
+        
+        // 绘制刻度线 - 左右各1/2/3级
+        this.ctx.strokeStyle = '#FFF';
+        this.ctx.lineWidth = 3;
+        
+        const scaleLevels = [1, 2, 3]; // 等级刻度
+        
+        // 左侧刻度（东风）
+        scaleLevels.forEach(level => {
+            const angle = centerAngle - (level / 3) * maxAngle; // 从中心向左偏移
+            const x1 = x + Math.cos(angle) * (radius + 7);
+            const y1 = y + Math.sin(angle) * (radius + 7);
+            const x2 = x + Math.cos(angle) * (radius + 18);
+            const y2 = y + Math.sin(angle) * (radius + 18);
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(x1, y1);
+            this.ctx.lineTo(x2, y2);
+            this.ctx.stroke();
+        });
+        
+        // 右侧刻度（西风）
+        scaleLevels.forEach(level => {
+            const angle = centerAngle + (level / 3) * maxAngle; // 从中心向右偏移
+            const x1 = x + Math.cos(angle) * (radius + 7);
+            const y1 = y + Math.sin(angle) * (radius + 7);
+            const x2 = x + Math.cos(angle) * (radius + 18);
+            const y2 = y + Math.sin(angle) * (radius + 18);
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(x1, y1);
+            this.ctx.lineTo(x2, y2);
+            this.ctx.stroke();
+        });
+        
+        // 绘制等级数字 - 标在圆弧外
+        this.ctx.fillStyle = '#FFF';
+        this.ctx.font = 'bold 18px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        // 左侧数字（东风）
+        scaleLevels.forEach(level => {
+            const angle = centerAngle - (level / 3) * maxAngle;
+            const textX = x + Math.cos(angle) * (radius + 30);
+            const textY = y + Math.sin(angle) * (radius + 30);
+            this.ctx.fillText(level.toString(), textX, textY);
+        });
+        
+        // 右侧数字（西风）
+        scaleLevels.forEach(level => {
+            const angle = centerAngle + (level / 3) * maxAngle;
+            const textX = x + Math.cos(angle) * (radius + 30);
+            const textY = y + Math.sin(angle) * (radius + 30);
+            this.ctx.fillText(level.toString(), textX, textY);
+        });
+        
+        // 绘制指针 - 根据风力方向，从正中向两边偏移
+        let pointerAngle;
+        if (windForce < 0) { // 东风（负值）
+            const clampedWind = Math.max(0, Math.min(3, windLevel));
+            pointerAngle = centerAngle - (clampedWind / 3) * maxAngle; // 从中心向左偏移
+        } else if (windForce > 0) { // 西风（正值）
+            const clampedWind = Math.max(0, Math.min(3, windLevel));
+            pointerAngle = centerAngle + (clampedWind / 3) * maxAngle; // 从中心向右偏移
+        } else {
+            pointerAngle = centerAngle; // 正中（无风）
+        }
+        
+        const pointerLength = radius - 12;
+        
+        // 根据风力等级选择指针颜色
+        let pointerColor = '#FFF';
+        if (windLevel <= 1) {
+            pointerColor = '#0F0'; // 绿色
+        } else if (windLevel <= 2) {
+            pointerColor = '#FF0'; // 黄色
+        } else {
+            pointerColor = '#F00'; // 红色
+        }
+        
+        this.ctx.strokeStyle = pointerColor;
+        this.ctx.lineWidth = 6;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(
+            x + Math.cos(pointerAngle) * pointerLength,
+            y + Math.sin(pointerAngle) * pointerLength
+        );
+        this.ctx.stroke();
+        
+        // 绘制指针中心点
+        this.ctx.fillStyle = '#FFF';
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, 6, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // 显示当前风力等级和方向
+        const windDirection = windForce < 0 ? '东风' : windForce > 0 ? '西风' : '无风';
+        this.ctx.fillStyle = '#FFF';
+        this.ctx.font = 'bold 18px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(`${windDirection} 等级: ${windLevel}`, x, y + 52);
     }
 
-    drawSwayIndicator() {
-        const x = 50; const y = this.height - 100; const sway = this.player.sway;
-        this.ctx.strokeStyle = '#FFF'; this.ctx.lineWidth = 3; this.ctx.beginPath(); this.ctx.arc(x, y, 30, 0, Math.PI * 2); this.ctx.stroke();
-        this.ctx.fillStyle = 'rgba(255, 0, 0, 0.3)'; this.ctx.beginPath(); this.ctx.arc(x, y, 30, Math.PI * 0.25, Math.PI * 0.75); this.ctx.arc(x, y, 30, Math.PI * 1.25, Math.PI * 1.75); this.ctx.fill();
-        this.ctx.strokeStyle = '#FF0'; this.ctx.lineWidth = 4; this.ctx.beginPath(); this.ctx.moveTo(x, y); this.ctx.lineTo(x + Math.sin(sway * Math.PI / 180) * 25, y); this.ctx.stroke();
-    }
 
     drawParticles() {
         this.particles.forEach(particle => {

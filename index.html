@@ -10,41 +10,121 @@
     <div id="bgBlur"></div>
     <div id="gameContainer" data-design-width="832" data-design-height="1480">
         <canvas id="gameCanvas" width="832" height="1480"></canvas>
-        <div id="gameUI">
-            <div>距离: <span id="distance">0</span>m</div>
-            <div>摆幅: <span id="sway">0</span>°</div>
-            <div>风力: <span id="wind">0</span></div>
-            <div>最高分: <span id="highScore">0</span>m</div>
+        
+        <div id="progressContainer">
+            <div id="progressBar">
+                <div id="progressFill"></div>
+                <div id="bestDistanceLine"></div>
+                <div id="maxDistance">6666m</div>
+            </div>
+            <div id="bestDistanceLabel">0m</div>
+            <div id="currentDistance">
+                <span id="currentDistanceNumber">0</span><span id="currentDistanceUnit">m</span>
+            </div>
+        </div>
             <div id="audioControls">
                 <button id="muteBtn" title="静音/取消静音">🔊</button>
                 <input type="range" id="volumeSlider" min="0" max="100" value="30" title="音量控制">
             </div>
+        <div id="helpTrigger">
+            <div class="help-icon">?</div>
         </div>
         <div id="instructions">
-            <div>← → 控制平衡</div>
-            <div>Z 伸长平衡杆</div>
-            <div>X 缩短平衡杆</div>
-            <div>保持摆幅 < 60°</div>
-            <div>按空格键开始</div>
+            <div class="instruction-item">
+                <span class="key">⇐ ⇒</span>
+                <span class="desc">控制平衡</span>
+        </div>
+            <div class="instruction-item">
+                <span class="key">Z</span>
+                <span class="desc">伸长平衡杆</span>
+        </div>
+            <div class="instruction-item">
+                <span class="key">X</span>
+                <span class="desc">缩短平衡杆</span>
+            </div>
+            <div class="instruction-item">
+                <span class="key">空格</span>
+                <span class="desc">开始/暂停</span>
+            </div>
+            <div class="instruction-tip">保持摆幅 < 60° 避免坠落</div>
         </div>
         
-        <div id="powerUpLegend">
-            <div style="color: #000000; font-weight: bold;">⚫ 黑色气球 - 爆炸</div>
-            <div style="color: #FF0000; font-weight: bold;">🔴 红色气球 - 加速</div>
-            <div style="color: #00FF00; font-weight: bold;">🟢 绿色气球 - 平衡</div>
-            <div style="color: #0080FF; font-weight: bold;">🔵 蓝色气球 - 减速</div>
-            <div style="color: #FFFF00; font-weight: bold;">🟡 黄色气球 - 失衡</div>
-        </div>
         <div id="startScreen">
+            <div class="title-container">
             <h1>钢丝行者</h1>
-            <p>保持平衡，走得更远！</p>
-            <p>使用 ← → 键控制平衡</p>
+                <div class="title-decoration"></div>
+            </div>
+            <p>在钢丝上保持平衡，挑战最远距离！</p>
+            <p>← → 键：控制身体平衡</p>
+            <p>Z 键：伸长平衡杆</p>
+            <p>X 键：缩短平衡杆</p>
+            <p>收集道具获得特殊能力</p>
+            <p>保持摆幅 < 60° 避免坠落</p>
+            <div class="start-prompt">
             <p>按空格键开始游戏</p>
+            </div>
         </div>
         <div id="gameOver">
-            <h2>游戏结束！</h2>
-            <p>你走了 <span id="finalDistance">0</span> 米</p>
-            <button id="restartBtn">重新开始</button>
+            <h2 id="gameOverTitle">游戏结束！</h2>
+            <p id="gameOverMessage">你走了 <span id="finalDistance">0</span> 米</p>
+            <div class="restart-prompt">
+                <p>按空格键重新挑战</p>
+            </div>
+        </div>
+        
+        <div id="pauseScreen">
+            <h2>游戏暂停</h2>
+            <div class="powerup-guide">
+                <h3>道具说明</h3>
+                <div class="powerup-list">
+                    <div class="powerup-item">
+                        <div class="powerup-icon slow-icon">
+                            <img src="image/item_slow.png" alt="减速道具">
+                        </div>
+                        <div class="powerup-info">
+                            <span class="powerup-name">减速道具</span>
+                            <span class="powerup-desc">降低移动速度</span>
+                        </div>
+                    </div>
+                    <div class="powerup-item">
+                        <div class="powerup-icon unbalance-icon">
+                            <img src="image/item_disrupt the balance.png" alt="失衡道具">
+                        </div>
+                        <div class="powerup-info">
+                            <span class="powerup-name">失衡道具</span>
+                            <span class="powerup-desc">增加摆幅难度</span>
+                        </div>
+                    </div>
+                    <div class="powerup-item">
+                        <div class="powerup-icon explosion-icon">
+                            <img src="image/item_bomb.png" alt="爆炸道具">
+                        </div>
+                        <div class="powerup-info">
+                            <span class="powerup-name">爆炸道具</span>
+                            <span class="powerup-desc">直接游戏结束</span>
+                        </div>
+                    </div>
+                    <div class="powerup-item">
+                        <div class="powerup-icon speed-icon">
+                            <img src="image/item_fast.png" alt="加速道具">
+                        </div>
+                        <div class="powerup-info">
+                            <span class="powerup-name">加速道具</span>
+                            <span class="powerup-desc">提升移动速度2倍</span>
+                        </div>
+                    </div>
+                    <div class="powerup-item">
+                        <div class="powerup-icon balance-icon">
+                            <img src="image/item_keep balance.png" alt="平衡道具">
+                        </div>
+                        <div class="powerup-info">
+                            <span class="powerup-name">平衡道具</span>
+                            <span class="powerup-desc">保持平衡3秒</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="continue-text">按空格键继续游戏</p>
         </div>
     </div>
 
@@ -97,16 +177,12 @@
                 // 粒子系统
                 this.particles = [];
                 
-                // 田园风景系统
+                // 田园风景系统已移除
                 this.landscape = [];
-                this.landscapeSpeed = this.speed * 2; // 背景滚动速度提升两倍
+                this.landscapeSpeed = this.speed * 2;
                 this.landscapeSpawnTimer = 0;
-                this.landscapeSpawnInterval = 200; // 帧数，降低生成频率
+                this.landscapeSpawnInterval = 200;
                 
-                // 云朵系统
-                this.clouds = [];
-                this.cloudSpawnTimer = 0;
-                this.cloudSpawnInterval = 200; // 帧数
                 
                 // 道具系统
                 this.powerUps = [];
@@ -158,8 +234,7 @@
                 document.getElementById('startScreen').style.display = 'none';
                 document.getElementById('gameOver').style.display = 'none';
                 this.resetGame();
-                this.initializeLandscape(); // 初始化田园风景
-                this.initializeClouds(); // 初始化云朵
+                // 田园风景系统已移除
             }
             
             restartGame() {
@@ -167,8 +242,7 @@
                 document.getElementById('startScreen').style.display = 'none';
                 document.getElementById('gameOver').style.display = 'none';
                 this.resetGame();
-                this.initializeLandscape(); // 初始化田园风景
-                this.initializeClouds(); // 初始化云朵
+                // 田园风景系统已移除
             }
             
             resetGame() {
@@ -184,8 +258,6 @@
                 this.background.offset = 0;
                 this.landscape = [];
                 this.landscapeSpawnTimer = 0;
-                this.clouds = [];
-                this.cloudSpawnTimer = 0;
                 this.powerUps = [];
                 this.powerUpSpawnTimer = 0;
                 this.activePowerUps = [];
@@ -211,11 +283,8 @@
                 // 更新粒子
                 this.updateParticles();
                 
-                // 更新田园风景
-                this.updateLandscape();
+                // 田园风景系统已移除
                 
-                // 更新云朵
-                this.updateClouds();
                 
                 // 更新道具
                 this.updatePowerUps();
@@ -342,62 +411,10 @@
             }
             
             updateLandscape() {
-                // 同步风景滚动速度与人物速度
-                let baseSpeed = this.speed * 10; // 背景移动速度为人物速度的5倍
-                
-                // 检查是否有速度提升道具，如果有则再增加2倍
-                for (let powerUp of this.activePowerUps) {
-                    if (powerUp.type === 'speed') {
-                        baseSpeed *= 3; // 加速时背景建筑移速增加2倍
-                        break;
-                    }
-                }
-                
-                this.landscapeSpeed = baseSpeed;
-                
-                // 生成新风景元素
-                this.landscapeSpawnTimer++;
-                if (this.landscapeSpawnTimer >= this.landscapeSpawnInterval) {
-                    this.spawnLandscapeElement();
-                    this.landscapeSpawnTimer = 0;
-                    this.landscapeSpawnInterval = 30 + Math.random() * 50; // 更频繁生成，确保连续图案
-                }
-                
-                // 更新现有风景元素位置
-                for (let i = this.landscape.length - 1; i >= 0; i--) {
-                    const element = this.landscape[i];
-                    element.y += this.landscapeSpeed;
-                    
-                    // 移除超出屏幕的元素
-                    if (element.y > this.height + 100) {
-                        this.landscape.splice(i, 1);
-                    }
-                }
+                // 田园风景系统已移除
+                return;
             }
             
-            updateClouds() {
-                // 生成新云朵
-                this.cloudSpawnTimer++;
-                if (this.cloudSpawnTimer >= this.cloudSpawnInterval) {
-                    this.spawnCloud();
-                    this.cloudSpawnTimer = 0;
-                    this.cloudSpawnInterval = 150 + Math.random() * 200; // 随机间隔
-                }
-                
-                // 更新现有云朵位置（根据风力）
-                for (let i = this.clouds.length - 1; i >= 0; i--) {
-                    const cloud = this.clouds[i];
-                    
-                    // 云朵根据风力移动
-                    const windEffect = this.wind.force * this.wind.direction * 0.5; // 风力影响系数
-                    cloud.x += windEffect;
-                    
-                    // 移除超出屏幕的云朵
-                    if (cloud.x < -100 || cloud.x > this.width + 100) {
-                        this.clouds.splice(i, 1);
-                    }
-                }
-            }
             
             updatePowerUps() {
                 // 生成新道具
@@ -453,68 +470,10 @@
             }
             
             spawnLandscapeElement() {
-                const elementTypes = ['tree', 'farmhouse']; // 只保留树木和房屋
-                const elementType = elementTypes[Math.floor(Math.random() * elementTypes.length)];
-                const rowY = -200; // 从更上方开始
-                
-                // 随机选择左侧或右侧，但远离钢丝
-                const side = Math.random() < 0.5 ? 'left' : 'right';
-                let x;
-                
-                if (side === 'left') {
-                    // 左侧边沿，远离钢丝，避免重叠
-                    x = 20 + Math.random() * 60; // 缩小范围避免重叠
-                } else {
-                    // 右侧边沿，远离钢丝，避免重叠
-                    x = this.width - 80 - Math.random() * 60; // 缩小范围避免重叠
-                }
-                
-                // 检查是否与现有元素重叠
-                const minDistance = 70; // 减少最小距离，让建筑更密集
-                let canPlace = true;
-                
-                for (let existing of this.landscape) {
-                    if (existing.side === side) {
-                        const distance = Math.abs(existing.x - x);
-                        if (distance < minDistance) {
-                            canPlace = false;
-                            break;
-                        }
-                    }
-                }
-                
-                // 只有不重叠时才添加
-                if (canPlace) {
-                    this.landscape.push({
-                        x: x,
-                        y: rowY,
-                        type: elementType,
-                        side: side,
-                        size: 60 + Math.random() * 120 // 放大3倍
-                    });
-                }
+                // 不再生成代码绘制的元素
+                return;
             }
             
-            spawnCloud() {
-                // 根据风向决定云朵生成位置
-                const windDirection = this.wind.direction;
-                let startX;
-                
-                if (windDirection > 0) {
-                    // 风向右吹，云朵从左侧进入
-                    startX = -100;
-                } else {
-                    // 风向左吹，云朵从右侧进入
-                    startX = this.width + 100;
-                }
-                
-                this.clouds.push({
-                    x: startX,
-                    y: 30 + Math.random() * 100, // 云朵高度随机
-                    size: 15 + Math.random() * 20, // 云朵大小随机
-                    opacity: 0.6 + Math.random() * 0.4 // 透明度随机
-                });
-            }
             
             spawnPowerUp() {
                 // 减少爆炸出现频率，其他道具出现概率更高
@@ -614,9 +573,9 @@
                         this.speed *= 0.5; // 速度除以2
                     }
                 } else if (powerUp.type === 'unbalance') {
-                    // 破坏平衡道具 - 失衡效果，向气球下落方向旋转15度
-                    const unbalanceOffset = powerUp.x > this.tightrope.x ? 15 : -15; // 根据气球位置决定旋转方向
-                    this.player.sway += unbalanceOffset; // 向气球下落方向旋转15度
+                    // 破坏平衡道具 - 失衡效果，向道具下落方向旋转15度
+                    const unbalanceOffset = powerUp.x > this.tightrope.x ? 15 : -15; // 根据道具位置决定旋转方向
+                    this.player.sway += unbalanceOffset; // 向道具下落方向旋转15度
                     // 失衡道具也可以叠加，延长持续时间
                     if (this.hasActivePowerUp('unbalance')) {
                         const existingUnbalance = this.activePowerUps.find(p => p.type === 'unbalance');
@@ -767,76 +726,10 @@
             }
             
             initializeLandscape() {
-                // 游戏开始时创建初始田园风景，确保画面中有元素
-                const leftPositions = [30, 50, 70]; // 左侧固定位置，避免重叠
-                const rightPositions = [730, 750, 770]; // 右侧固定位置，避免重叠
-                
-                // 创建画面中的初始元素
-                for (let i = 0; i < 3; i++) {
-                    const rowY = 100 + i * 150; // 从画面中开始
-                    
-                    // 左侧元素
-                    const leftX = leftPositions[i];
-                    const leftType = ['tree', 'farmhouse'][Math.floor(Math.random() * 2)];
-                    this.landscape.push({
-                        x: leftX,
-                        y: rowY,
-                        type: leftType,
-                        side: 'left',
-                        size: 60 + Math.random() * 120
-                    });
-                    
-                    // 右侧元素
-                    const rightX = rightPositions[i];
-                    const rightType = ['tree', 'farmhouse'][Math.floor(Math.random() * 2)];
-                    this.landscape.push({
-                        x: rightX,
-                        y: rowY,
-                        type: rightType,
-                        side: 'right',
-                        size: 60 + Math.random() * 120
-                    });
-                }
-                
-                // 创建画面上方的元素
-                for (let i = 0; i < 5; i++) {
-                    const rowY = -200 - i * 150; // 从上方开始，间隔更大
-                    
-                    // 左侧元素
-                    const leftX = leftPositions[i % 3];
-                    const leftType = ['tree', 'farmhouse'][Math.floor(Math.random() * 2)];
-                    this.landscape.push({
-                        x: leftX,
-                        y: rowY,
-                        type: leftType,
-                        side: 'left',
-                        size: 60 + Math.random() * 120
-                    });
-                    
-                    // 右侧元素
-                    const rightX = rightPositions[i % 3];
-                    const rightType = ['tree', 'farmhouse'][Math.floor(Math.random() * 2)];
-                    this.landscape.push({
-                        x: rightX,
-                        y: rowY,
-                        type: rightType,
-                        side: 'right',
-                        size: 60 + Math.random() * 120
-                    });
-                }
+                // 田园风景系统已移除
+                return;
             }
             
-            initializeClouds() {
-                // 游戏开始时创建初始云朵
-                for (let i = 0; i < 5; i++) {
-                    this.clouds.push({
-                        x: Math.random() * this.width,
-                        y: 30 + Math.random() * 100,
-                        size: 15 + Math.random() * 20,
-                        opacity: 0.6 + Math.random() * 0.4
-                    });
-                }
-            }
             
             checkGameOver() {
                 if (Math.abs(this.player.sway) >= 60) {
@@ -872,14 +765,9 @@
                 // 绘制背景
                 this.drawBackground();
                 
-                // 绘制钢丝
-                this.drawTightrope();
-                
-                // 绘制玩家
-                this.drawPlayer();
-                
-                // 绘制风力指示器
-                this.drawWindIndicator();
+                // 代码绘制的钢丝已移除
+                // 代码绘制的玩家角色已移除
+                // 代码绘制的风力指示器已移除
                 
                 // 绘制摆幅指示器
                 this.drawSwayIndicator();
@@ -892,364 +780,167 @@
             }
             
             drawBackground() {
-                // 天空渐变
-                const gradient = this.ctx.createLinearGradient(0, 0, 0, this.height);
-                gradient.addColorStop(0, '#87CEEB');
-                gradient.addColorStop(0.5, '#98FB98');
-                gradient.addColorStop(1, '#90EE90');
-                
-                this.ctx.fillStyle = gradient;
-                this.ctx.fillRect(0, 0, this.width, this.height);
-                
-                // 云朵（根据风力移动）
-                this.drawClouds();
-                
-                // 田园风景（滚动）
-                this.drawScrollingLandscape();
-                
+                // 渐变背景已移除，不再绘制任何代码生成的背景
+                // 田园风景系统已移除
                 // 装饰气球已删除
             }
             
-            drawClouds() {
-                this.clouds.forEach(cloud => {
-                    this.ctx.save();
-                    this.ctx.globalAlpha = cloud.opacity;
-                    this.drawCloud(cloud.x, cloud.y, cloud.size);
-                    this.ctx.restore();
-                });
-            }
             
-            drawCloud(x, y, size = 20) {
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                this.ctx.beginPath();
-                this.ctx.arc(x, y, size, 0, Math.PI * 2);
-                this.ctx.arc(x + size * 1.25, y, size * 1.25, 0, Math.PI * 2);
-                this.ctx.arc(x + size * 2.5, y, size, 0, Math.PI * 2);
-                this.ctx.arc(x + size * 1.25, y - size * 0.75, size, 0, Math.PI * 2);
-                this.ctx.fill();
-            }
             
             drawScrollingLandscape() {
-                // 绘制所有滚动田园风景元素
-                this.landscape.forEach(element => {
-                    this.drawLandscapeElement(element);
-                });
+                // 田园风景系统已移除
+                return;
             }
             
             drawLandscapeElement(element) {
-                const x = element.x;
-                const y = element.y;
-                const size = element.size;
-                
-                switch (element.type) {
-                    case 'field':
-                        // 农田
-                        this.ctx.fillStyle = '#90EE90';
-                        this.ctx.fillRect(x, y, size, size * 0.6);
-                        // 农田纹理
-                        this.ctx.strokeStyle = '#7CCD7C';
-                        this.ctx.lineWidth = 1;
-                        for (let i = 0; i < 3; i++) {
-                            this.ctx.beginPath();
-                            this.ctx.moveTo(x, y + i * size * 0.2);
-                            this.ctx.lineTo(x + size, y + i * size * 0.2);
-                            this.ctx.stroke();
-                        }
-                        break;
-                        
-                    case 'tree':
-                        // 树木（放大3倍）
-                        this.ctx.fillStyle = '#228B22';
-                        this.ctx.beginPath();
-                        this.ctx.arc(x + size/2, y + size/3, size/2, 0, Math.PI * 2);
-                        this.ctx.fill();
-                        // 树干（放大3倍）
-                        this.ctx.fillStyle = '#8B4513';
-                        this.ctx.fillRect(x + size/2 - 9, y + size/2, 18, size/2);
-                        // 树木细节
-                        this.ctx.fillStyle = '#32CD32';
-                        this.ctx.beginPath();
-                        this.ctx.arc(x + size/2 - 15, y + size/3 - 10, size/3, 0, Math.PI * 2);
-                        this.ctx.arc(x + size/2 + 15, y + size/3 - 10, size/3, 0, Math.PI * 2);
-                        this.ctx.fill();
-                        break;
-                        
-                    case 'farmhouse':
-                        // 农舍（放大3倍）
-                        this.ctx.fillStyle = '#DEB887';
-                        this.ctx.fillRect(x, y, size, size * 0.7);
-                        // 屋顶（放大3倍）
-                        this.ctx.fillStyle = '#8B4513';
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(x - 15, y);
-                        this.ctx.lineTo(x + size/2, y - 45);
-                        this.ctx.lineTo(x + size + 15, y);
-                        this.ctx.closePath();
-                        this.ctx.fill();
-                        // 门（放大3倍）
-                        this.ctx.fillStyle = '#654321';
-                        this.ctx.fillRect(x + size/2 - 12, y + size * 0.4, 24, size * 0.3);
-                        // 窗户（放大3倍）
-                        this.ctx.fillStyle = '#87CEEB';
-                        this.ctx.fillRect(x + size/4, y + size * 0.2, 12, 12);
-                        this.ctx.fillRect(x + size * 3/4 - 12, y + size * 0.2, 12, 12);
-                        // 窗户框架
-                        this.ctx.strokeStyle = '#654321';
-                        this.ctx.lineWidth = 2;
-                        this.ctx.strokeRect(x + size/4, y + size * 0.2, 12, 12);
-                        this.ctx.strokeRect(x + size * 3/4 - 12, y + size * 0.2, 12, 12);
-                        break;
-                        
-                    case 'pond':
-                        // 池塘
-                        this.ctx.fillStyle = '#4682B4';
-                        this.ctx.beginPath();
-                        this.ctx.ellipse(x + size/2, y + size/2, size/2, size/3, 0, 0, Math.PI * 2);
-                        this.ctx.fill();
-                        // 水波
-                        this.ctx.strokeStyle = '#87CEEB';
-                        this.ctx.lineWidth = 1;
-                        for (let i = 0; i < 2; i++) {
-                            this.ctx.beginPath();
-                            this.ctx.ellipse(x + size/2, y + size/2 + i * 5, size/2 - 5, size/3 - 3, 0, 0, Math.PI * 2);
-                            this.ctx.stroke();
-                        }
-                        break;
-                        
-                    case 'crop':
-                        // 庄稼
-                        this.ctx.fillStyle = '#9ACD32';
-                        for (let i = 0; i < 4; i++) {
-                            const cropX = x + i * size/4;
-                            this.ctx.fillRect(cropX, y + size * 0.3, 3, size * 0.4);
-                        }
-                        // 庄稼顶部
-                        this.ctx.fillStyle = '#FFD700';
-                        for (let i = 0; i < 4; i++) {
-                            const cropX = x + i * size/4;
-                            this.ctx.beginPath();
-                            this.ctx.arc(cropX + 1.5, y + size * 0.2, 2, 0, Math.PI * 2);
-                            this.ctx.fill();
-                        }
-                        break;
-                }
+                // 不再绘制代码生成的元素
+                return;
             }
             
-            drawBuildings() {
-                // 左侧建筑群
-                this.drawBuilding(50, this.height/2 - 80, 60, 80, '#A0A0A0');
-                this.drawBuilding(120, this.height/2 - 60, 50, 60, '#B0B0B0');
-                
-                // 右侧建筑
-                this.drawBuilding(this.width - 110, this.height/2 - 100, 70, 100, '#C0C0C0');
-                
-                // 添加窗户
-                this.drawWindows(50, this.height/2 - 80, 60, 80);
-                this.drawWindows(120, this.height/2 - 60, 50, 60);
-                this.drawWindows(this.width - 110, this.height/2 - 100, 70, 100);
-            }
-            
-            drawBuilding(x, y, width, height, color) {
-                // 绘制建筑主体（俯瞰视角，更多显示屋顶）
-                this.ctx.fillStyle = color;
-                this.ctx.fillRect(x, y, width, height);
-                
-                // 建筑轮廓
-                this.ctx.strokeStyle = '#666';
-                this.ctx.lineWidth = 2;
-                this.ctx.strokeRect(x, y, width, height);
-                
-                // 屋顶（俯瞰视角的三角形屋顶）
-                this.ctx.fillStyle = '#8B4513';
-                this.ctx.beginPath();
-                this.ctx.moveTo(x - 8, y);
-                this.ctx.lineTo(x + width/2, y - 20);
-                this.ctx.lineTo(x + width + 8, y);
-                this.ctx.closePath();
-                this.ctx.fill();
-                
-                // 屋顶轮廓
-                this.ctx.strokeStyle = '#654321';
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.moveTo(x - 8, y);
-                this.ctx.lineTo(x + width/2, y - 20);
-                this.ctx.lineTo(x + width + 8, y);
-                this.ctx.stroke();
-                
-                // 屋顶高光
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                this.ctx.beginPath();
-                this.ctx.moveTo(x - 6, y - 2);
-                this.ctx.lineTo(x + width/2, y - 18);
-                this.ctx.lineTo(x + width/2, y - 5);
-                this.ctx.closePath();
-                this.ctx.fill();
-            }
-            
-            drawWindows(x, y, width, height) {
-                // 俯瞰视角的窗户（更小更密集）
-                this.ctx.fillStyle = '#87CEEB';
-                const windowSize = 4;
-                const spacing = 8;
-                
-                for (let row = 0; row < Math.floor(height / spacing); row++) {
-                    for (let col = 0; col < Math.floor(width / spacing); col++) {
-                        const wx = x + 5 + col * spacing;
-                        const wy = y + 5 + row * spacing;
-                        this.ctx.fillRect(wx, wy, windowSize, windowSize);
-                        
-                        // 窗户框架
-                        this.ctx.strokeStyle = '#654321';
-                        this.ctx.lineWidth = 1;
-                        this.ctx.strokeRect(wx, wy, windowSize, windowSize);
-                    }
-                }
-            }
             
             drawBalloons() {
-                // 气球位置（跟随玩家移动）
-                const balloonX = this.player.x + 80;
-                const balloonY = this.height / 2 - 200;
-                
-                // 气球线
-                this.ctx.strokeStyle = '#8B4513';
-                this.ctx.lineWidth = 4;
-                this.ctx.beginPath();
-                this.ctx.moveTo(balloonX, balloonY);
-                this.ctx.lineTo(balloonX, balloonY + 40);
-                this.ctx.stroke();
-                
-                // 气球
-                const colors = ['#FFD700', '#FF6B6B', '#4ECDC4'];
-                for (let i = 0; i < 3; i++) {
-                    this.ctx.fillStyle = colors[i];
-                    this.ctx.beginPath();
-                    this.ctx.arc(balloonX + i * 30 - 30, balloonY - 20, 16, 0, Math.PI * 2);
-                    this.ctx.fill();
-                    
-                    // 气球高光
-                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-                    this.ctx.beginPath();
-                    this.ctx.arc(balloonX + i * 30 - 30 - 4, balloonY - 20 - 4, 6, 0, Math.PI * 2);
-                    this.ctx.fill();
-                }
+                // 装饰气球已删除
+                return;
             }
             
             drawTightrope() {
-                this.ctx.strokeStyle = '#8B4513';
-                this.ctx.lineWidth = this.tightrope.thickness;
-                this.ctx.beginPath();
-                this.ctx.moveTo(this.tightrope.x, 0);
-                this.ctx.lineTo(this.tightrope.x, this.height);
-                this.ctx.stroke();
+                // 代码绘制的钢丝已移除
+                return;
             }
             
             drawPlayer() {
-                const centerX = this.tightrope.x;
-                const centerY = this.height / 2; // 脚的位置（旋转中心）
-                const sway = this.player.sway;
-                
-                // 保存当前状态
-                this.ctx.save();
-                
-                // 移动到旋转中心
-                this.ctx.translate(centerX, centerY);
-                
-                // 根据摆幅旋转
-                this.ctx.rotate(sway * Math.PI / 180);
-                
-                // 绘制身体（相对于旋转中心）
-                this.ctx.fillStyle = '#FF6B6B';
-                this.ctx.fillRect(-10, -this.player.size/2, 20, this.player.size);
-                
-                // 绘制头部
-                this.ctx.fillStyle = '#FFE66D';
-                this.ctx.beginPath();
-                this.ctx.arc(0, -this.player.size/2 - 16, 16, 0, Math.PI * 2);
-                this.ctx.fill();
-                
-                // 绘制手臂（平衡杆效果）
-                this.ctx.strokeStyle = '#8B4513';
-                this.ctx.lineWidth = 6;
-                this.ctx.beginPath();
-                this.ctx.moveTo(-this.balanceRod.length, 0);
-                this.ctx.lineTo(this.balanceRod.length, 0);
-                this.ctx.stroke();
-                
-                // 绘制眼睛
-                this.ctx.fillStyle = '#000';
-                this.ctx.beginPath();
-                this.ctx.arc(-6, -this.player.size/2 - 20, 2, 0, Math.PI * 2);
-                this.ctx.arc(6, -this.player.size/2 - 20, 2, 0, Math.PI * 2);
-                this.ctx.fill();
-                
-                // 绘制脚部（与钢丝接触的点）
-                this.ctx.fillStyle = '#8B4513';
-                this.ctx.beginPath();
-                this.ctx.arc(0, this.player.size/2, 6, 0, Math.PI * 2);
-                this.ctx.fill();
-                
-                // 恢复状态
-                this.ctx.restore();
-                
-                // 更新玩家实际位置（用于气球跟随等）
-                this.player.x = centerX;
-                this.player.y = centerY;
+                // 代码绘制的玩家角色已移除
+                return;
             }
             
             drawWindIndicator() {
-                const x = this.width - 100;
-                const y = 50;
-                const windForce = this.wind.force * this.wind.direction;
-                
-                // 背景
-                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                this.ctx.fillRect(x - 10, y - 20, 80, 40);
-                
-                // 风力条
-                this.ctx.fillStyle = windForce > 0 ? '#FF6B6B' : '#4ECDC4';
-                const barWidth = Math.abs(windForce) * 60;
-                this.ctx.fillRect(x, y - 5, barWidth, 10);
-                
-                // 中心线
-                this.ctx.strokeStyle = '#FFF';
-                this.ctx.lineWidth = 1;
-                this.ctx.beginPath();
-                this.ctx.moveTo(x + 30, y - 10);
-                this.ctx.lineTo(x + 30, y + 10);
-                this.ctx.stroke();
+                // 代码绘制的风力指示器已移除
+                return;
             }
             
             drawSwayIndicator() {
-                const x = 50;
-                const y = this.height - 100;
+                const x = 80; // 仪表盘中心X坐标
+                const y = this.height - 80; // 仪表盘中心Y坐标
+                const radius = 40; // 仪表盘半径
                 const sway = this.player.sway;
                 
-                // 背景圆
-                this.ctx.strokeStyle = '#FFF';
+                // 绘制仪表盘外圈
+                this.ctx.strokeStyle = '#333';
                 this.ctx.lineWidth = 3;
                 this.ctx.beginPath();
-                this.ctx.arc(x, y, 30, 0, Math.PI * 2);
+                this.ctx.arc(x, y, radius, 0, Math.PI * 2);
                 this.ctx.stroke();
                 
-                // 危险区域（左右两侧）
-                this.ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                // 绘制仪表盘背景
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
                 this.ctx.beginPath();
-                this.ctx.arc(x, y, 30, Math.PI * 0.25, Math.PI * 0.75);
-                this.ctx.arc(x, y, 30, Math.PI * 1.25, Math.PI * 1.75);
+                this.ctx.arc(x, y, radius - 2, 0, Math.PI * 2);
                 this.ctx.fill();
                 
-                // 指针（水平方向显示摆幅）
-                this.ctx.strokeStyle = '#FF0';
-                this.ctx.lineWidth = 4;
+                // 绘制角度刻度区域（扇形）
+                const centerAngle = Math.PI / 2; // 中心角度（垂直向上）
+                const maxAngle = Math.PI * 0.75; // 最大角度范围（270度）
+                
+                // 绿色区域 (0-20度)
+                this.ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y);
+                this.ctx.arc(x, y, radius - 5, centerAngle - maxAngle * 0.22, centerAngle + maxAngle * 0.22);
+                this.ctx.closePath();
+                    this.ctx.fill();
+                    
+                // 黄色区域 (20-40度)
+                this.ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
+                    this.ctx.beginPath();
+                this.ctx.moveTo(x, y);
+                this.ctx.arc(x, y, radius - 5, centerAngle - maxAngle * 0.44, centerAngle - maxAngle * 0.22);
+                this.ctx.arc(x, y, radius - 5, centerAngle + maxAngle * 0.22, centerAngle + maxAngle * 0.44);
+                this.ctx.closePath();
+                    this.ctx.fill();
+            
+                // 红色区域 (40-60度)
+                this.ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y);
+                this.ctx.arc(x, y, radius - 5, centerAngle - maxAngle * 0.67, centerAngle - maxAngle * 0.44);
+                this.ctx.arc(x, y, radius - 5, centerAngle + maxAngle * 0.44, centerAngle + maxAngle * 0.67);
+                this.ctx.closePath();
+                this.ctx.fill();
+                
+                // 黑色区域 (60度以上)
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y);
+                this.ctx.arc(x, y, radius - 5, centerAngle - maxAngle, centerAngle - maxAngle * 0.67);
+                this.ctx.arc(x, y, radius - 5, centerAngle + maxAngle * 0.67, centerAngle + maxAngle);
+                this.ctx.closePath();
+                this.ctx.fill();
+                
+                // 绘制刻度线
+                this.ctx.strokeStyle = '#FFF';
+                this.ctx.lineWidth = 1;
+                for (let i = 0; i <= 60; i += 10) {
+                    const angle = centerAngle - (i / 60) * maxAngle;
+                    const x1 = x + Math.cos(angle) * (radius - 8);
+                    const y1 = y + Math.sin(angle) * (radius - 8);
+                    const x2 = x + Math.cos(angle) * (radius - 15);
+                    const y2 = y + Math.sin(angle) * (radius - 15);
+                    
+                this.ctx.beginPath();
+                    this.ctx.moveTo(x1, y1);
+                    this.ctx.lineTo(x2, y2);
+                this.ctx.stroke();
+            }
+            
+                // 绘制角度数字
+                this.ctx.fillStyle = '#FFF';
+                this.ctx.font = '10px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                for (let i = 0; i <= 60; i += 20) {
+                    const angle = centerAngle - (i / 60) * maxAngle;
+                    const textX = x + Math.cos(angle) * (radius - 25);
+                    const textY = y + Math.sin(angle) * (radius - 25);
+                    this.ctx.fillText(i.toString(), textX, textY);
+                }
+                
+                // 绘制指针
+                const pointerAngle = centerAngle - (Math.abs(sway) / 60) * maxAngle;
+                const pointerLength = radius - 10;
+                
+                // 根据角度选择指针颜色
+                let pointerColor = '#FFF';
+                if (Math.abs(sway) <= 20) {
+                    pointerColor = '#0F0'; // 绿色
+                } else if (Math.abs(sway) <= 40) {
+                    pointerColor = '#FF0'; // 黄色
+                } else if (Math.abs(sway) <= 60) {
+                    pointerColor = '#F00'; // 红色
+                } else {
+                    pointerColor = '#000'; // 黑色
+                }
+                
+                this.ctx.strokeStyle = pointerColor;
+                this.ctx.lineWidth = 3;
                 this.ctx.beginPath();
                 this.ctx.moveTo(x, y);
                 this.ctx.lineTo(
-                    x + Math.sin(sway * Math.PI / 180) * 25,
-                    y
+                    x + Math.cos(pointerAngle) * pointerLength,
+                    y + Math.sin(pointerAngle) * pointerLength
                 );
                 this.ctx.stroke();
+                
+                // 绘制指针中心点
+                this.ctx.fillStyle = '#FFF';
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, 3, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // 显示当前角度数值
+                this.ctx.fillStyle = '#FFF';
+                this.ctx.font = 'bold 12px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(Math.abs(sway).toFixed(1) + '°', x, y + 50);
             }
             
             drawParticles() {
@@ -1271,65 +962,8 @@
             }
             
             drawPowerUp(powerUp) {
-                const x = powerUp.x;
-                const y = powerUp.y;
-                const size = powerUp.size;
-                
-                // 根据道具类型确定气球颜色
-                let balloonColor = '#FFB6C1'; // 默认粉色
-                let boxColor = '#FFFFFF';
-                let textColor = '#000000';
-                let text = '';
-                
-                if (powerUp.type === 'explosion') {
-                    balloonColor = '#000000'; // 黑色气球 - 坏道具
-                    text = '爆炸';
-                } else if (powerUp.type === 'speed') {
-                    balloonColor = '#FF0000'; // 红色气球 - 好道具
-                    text = '加速';
-                } else if (powerUp.type === 'balance') {
-                    balloonColor = '#00FF00'; // 绿色气球 - 好道具
-                    text = '平衡';
-                } else if (powerUp.type === 'slow') {
-                    balloonColor = '#0080FF'; // 蓝色气球 - 坏道具
-                    text = '减速';
-                } else if (powerUp.type === 'unbalance') {
-                    balloonColor = '#FFFF00'; // 黄色气球 - 坏道具
-                    text = '失衡';
-                }
-                
-                // 绘制气球（放大3倍）
-                this.ctx.fillStyle = balloonColor;
-                this.ctx.beginPath();
-                this.ctx.arc(x, y - 15, 24, 0, Math.PI * 2); // 从8放大到24
-                this.ctx.fill();
-                
-                // 气球高光
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-                this.ctx.beginPath();
-                this.ctx.arc(x - 6, y - 19, 6, 0, Math.PI * 2); // 高光也放大
-                this.ctx.fill();
-                
-                // 气球线
-                this.ctx.strokeStyle = '#8B4513';
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.moveTo(x, y - 7);
-                this.ctx.lineTo(x, y + 5);
-                this.ctx.stroke();
-                
-                // 绘制道具方块
-                this.ctx.fillStyle = boxColor;
-                this.ctx.fillRect(x - size/2, y + 5, size, size);
-                this.ctx.strokeStyle = '#000000';
-                this.ctx.lineWidth = 2;
-                this.ctx.strokeRect(x - size/2, y + 5, size, size);
-                
-                // 绘制道具文字
-                this.ctx.fillStyle = textColor;
-                this.ctx.font = 'bold 12px Arial';
-                this.ctx.textAlign = 'center';
-                this.ctx.fillText(text, x, y + 18);
+                // 代码绘制的道具系统已移除
+                return;
             }
             
             gameLoop() {

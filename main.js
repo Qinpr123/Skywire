@@ -170,26 +170,52 @@ class TightropeGame {
         oscillator.stop(this.audioContext.currentTime + 0.5);
     }
 
-    // 播放新纪录音效（欢快的成功音）
+    // 播放新纪录音效（鼓掌声音）
     playNewRecordSound() {
         if (!this.audioContext) return;
         
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
+        const now = this.audioContext.currentTime;
         
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
+        // 创建多个短促的"拍手"声音
+        for (let i = 0; i < 6; i++) {
+            const delay = i * 0.1; // 每个拍手间隔0.1秒
+            
+            // 主频率（低频噪声模拟手掌撞击）
+            const oscillator1 = this.audioContext.createOscillator();
+            const gainNode1 = this.audioContext.createGain();
+            
+            oscillator1.connect(gainNode1);
+            gainNode1.connect(this.audioContext.destination);
+            
+            // 使用噪音波形模拟拍手声
+            oscillator1.type = 'sawtooth';
+            oscillator1.frequency.setValueAtTime(80 + Math.random() * 40, now + delay);
+            
+            gainNode1.gain.setValueAtTime(0, now + delay);
+            gainNode1.gain.linearRampToValueAtTime(0.2, now + delay + 0.01);
+            gainNode1.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.08);
+            
+            oscillator1.start(now + delay);
+            oscillator1.stop(now + delay + 0.08);
+            
+            // 高频成分（增加清脆感）
+            const oscillator2 = this.audioContext.createOscillator();
+            const gainNode2 = this.audioContext.createGain();
+            
+            oscillator2.connect(gainNode2);
+            gainNode2.connect(this.audioContext.destination);
+            
+            oscillator2.type = 'square';
+            oscillator2.frequency.setValueAtTime(2000 + Math.random() * 500, now + delay);
+            
+            gainNode2.gain.setValueAtTime(0, now + delay);
+            gainNode2.gain.linearRampToValueAtTime(0.05, now + delay + 0.01);
+            gainNode2.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.05);
+            
+            oscillator2.start(now + delay);
+            oscillator2.stop(now + delay + 0.05);
+        }
         
-        // 播放上升的音调
-        oscillator.frequency.setValueAtTime(300, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(600, this.audioContext.currentTime + 0.3);
-        oscillator.frequency.exponentialRampToValueAtTime(800, this.audioContext.currentTime + 0.6);
-        
-        gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.8);
-        
-        oscillator.start(this.audioContext.currentTime);
-        oscillator.stop(this.audioContext.currentTime + 0.8);
     }
 
     loadManFrames() {

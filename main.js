@@ -172,50 +172,16 @@ class TightropeGame {
 
     // 播放新纪录音效（鼓掌声音）
     playNewRecordSound() {
-        if (!this.audioContext) return;
-        
-        const now = this.audioContext.currentTime;
-        
-        // 创建多个短促的"拍手"声音
-        for (let i = 0; i < 6; i++) {
-            const delay = i * 0.1; // 每个拍手间隔0.1秒
-            
-            // 主频率（低频噪声模拟手掌撞击）
-            const oscillator1 = this.audioContext.createOscillator();
-            const gainNode1 = this.audioContext.createGain();
-            
-            oscillator1.connect(gainNode1);
-            gainNode1.connect(this.audioContext.destination);
-            
-            // 使用噪音波形模拟拍手声
-            oscillator1.type = 'sawtooth';
-            oscillator1.frequency.setValueAtTime(80 + Math.random() * 40, now + delay);
-            
-            gainNode1.gain.setValueAtTime(0, now + delay);
-            gainNode1.gain.linearRampToValueAtTime(0.2, now + delay + 0.01);
-            gainNode1.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.08);
-            
-            oscillator1.start(now + delay);
-            oscillator1.stop(now + delay + 0.08);
-            
-            // 高频成分（增加清脆感）
-            const oscillator2 = this.audioContext.createOscillator();
-            const gainNode2 = this.audioContext.createGain();
-            
-            oscillator2.connect(gainNode2);
-            gainNode2.connect(this.audioContext.destination);
-            
-            oscillator2.type = 'square';
-            oscillator2.frequency.setValueAtTime(2000 + Math.random() * 500, now + delay);
-            
-            gainNode2.gain.setValueAtTime(0, now + delay);
-            gainNode2.gain.linearRampToValueAtTime(0.05, now + delay + 0.01);
-            gainNode2.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.05);
-            
-            oscillator2.start(now + delay);
-            oscillator2.stop(now + delay + 0.05);
+        try {
+            // 创建音频元素播放鼓掌音效
+            const clapSound = new Audio('claps.MP3');
+            clapSound.volume = 0.7; // 设置音量为70%
+            clapSound.play().catch(e => {
+                console.warn('新纪录音效播放失败:', e);
+            });
+        } catch (e) {
+            console.warn('无法加载新纪录音效文件:', e);
         }
-        
     }
 
     loadManFrames() {
@@ -224,10 +190,30 @@ class TightropeGame {
             const img = new Image();
             img.onload = () => {
                 this.sprites.loaded++;
-                if (this.sprites.loaded >= this.sprites.total) this.sprites.ready = true;
+                if (this.sprites.loaded >= this.sprites.total) {
+                    this.sprites.ready = true;
+                    this.checkAllResourcesLoaded(); // 检查所有资源是否加载完成
+                }
             };
             img.src = `image/man_walk_${pad2(i)}.png`;
             this.sprites.manFrames.push(img);
+        }
+    }
+
+    checkAllResourcesLoaded() {
+        // 检查所有资源是否加载完成（图片、角色帧、音频）
+        if (this.images.ready && this.sprites.ready && this.audio.ready) {
+            // 延迟一点时间确保加载界面显示足够长
+            setTimeout(() => {
+                const loadingScreen = document.getElementById('loadingScreen');
+                if (loadingScreen) {
+                    loadingScreen.classList.add('hidden');
+                    // 加载完成后移除加载界面元素
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                    }, 500); // 等待淡出动画完成
+                }
+            }, 1000); // 显示加载界面至少1秒
         }
     }
 
@@ -241,7 +227,11 @@ class TightropeGame {
         };
         const onLoaded = () => {
             this.images.loaded++;
-            if (this.images.loaded >= 13) { this.images.ready = true; setBgLayer(); } // 2个背景图 + 5个道具图 + 5个背景运动元素图 + 1个云层图
+            if (this.images.loaded >= 14) { 
+                this.images.ready = true; 
+                setBgLayer(); 
+                this.checkAllResourcesLoaded(); // 检查所有资源是否加载完成
+            } // 3个背景图 + 5个道具图 + 5个背景运动元素图 + 1个云层图
         };
         const bg = new Image();
         bg.onload = onLoaded;
@@ -249,6 +239,10 @@ class TightropeGame {
         const gs = new Image();
         gs.onload = onLoaded;
         gs.src = 'image/gs.png';
+        
+        const bg_start = new Image();
+        bg_start.onload = onLoaded;
+        bg_start.src = 'image/bg_start.png';
         // 平衡杆图片（加载后即用，不纳入 ready 门槛）
         const pole = new Image();
         pole.onload = () => { 
@@ -312,6 +306,7 @@ class TightropeGame {
         
         this.images.bg = bg;
         this.images.gs = gs;
+        this.images.bg_start = bg_start;
         this.images.powerUps.bomb = bomb;
         this.images.powerUps.fast = fast;
         this.images.powerUps.slow = slow;
@@ -332,6 +327,7 @@ class TightropeGame {
             if (this.audio.loaded >= 1) { // 1个背景音乐
                 this.audio.ready = true;
                 console.log('音频系统准备就绪');
+                this.checkAllResourcesLoaded(); // 检查所有资源是否加载完成
             }
         };
         
@@ -432,7 +428,12 @@ class TightropeGame {
             this.keys[e.code] = false;
         });
 
-        // 移除按钮点击事件，现在使用空格键重新开始
+        // 开始按钮点击事件
+        document.getElementById('startButton').addEventListener('click', () => {
+            if (!this.gameRunning) {
+                this.startGame();
+            }
+        });
 
         // 音频控制事件监听器
         document.getElementById('muteBtn').addEventListener('click', () => {

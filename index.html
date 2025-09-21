@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- 加载界面 -->
+    <div id="loadingScreen">
+        <div class="wrapper">
+            <div class="circle"></div>
+            <div class="circle"></div>
+            <div class="circle"></div>
+            <div class="shadow"></div>
+            <div class="shadow"></div>
+            <div class="shadow"></div>
+        </div>
+    </div>
+    
     <div id="bgBlur"></div>
     <div id="gameContainer" data-design-width="832" data-design-height="1480">
         <canvas id="gameCanvas" width="832" height="1480"></canvas>
@@ -22,47 +34,43 @@
                 <span id="currentDistanceNumber">0</span><span id="currentDistanceUnit">m</span>
             </div>
         </div>
-            <div id="audioControls">
-                <button id="muteBtn" title="静音/取消静音">🔊</button>
-                <input type="range" id="volumeSlider" min="0" max="100" value="30" title="音量控制">
-            </div>
+        
+        <!-- 全局音频控制 -->
+        <div id="audioControls">
+            <button id="muteBtn" title="静音/取消静音">🔊</button>
+            <input type="range" id="volumeSlider" min="0" max="100" value="30" title="音量控制">
+        </div>
+        
+        <!-- 全局操作说明问号 -->
         <div id="helpTrigger">
             <div class="help-icon">?</div>
-        </div>
-        <div id="instructions">
-            <div class="instruction-item">
-                <span class="key">⇐ ⇒</span>
-                <span class="desc">控制平衡</span>
-        </div>
-            <div class="instruction-item">
-                <span class="key">Z</span>
-                <span class="desc">伸长平衡杆</span>
-        </div>
-            <div class="instruction-item">
-                <span class="key">X</span>
-                <span class="desc">缩短平衡杆</span>
+            <!-- 操作说明内容 -->
+            <div id="instructions">
+                <div class="instruction-item">
+                    <span class="key">⇐ ⇒</span>
+                    <span class="desc">控制平衡</span>
+                </div>
+                <div class="instruction-item">
+                    <span class="key">Z</span>
+                    <span class="desc">伸长平衡杆</span>
+                </div>
+                <div class="instruction-item">
+                    <span class="key">X</span>
+                    <span class="desc">缩短平衡杆</span>
+                </div>
+                <div class="instruction-item">
+                    <span class="key">空格</span>
+                    <span class="desc">开始/暂停</span>
+                </div>
+                <div class="instruction-tip">保持摆幅 < 60° 避免坠落</div>
             </div>
-            <div class="instruction-item">
-                <span class="key">空格</span>
-                <span class="desc">开始/暂停</span>
-            </div>
-            <div class="instruction-tip">保持摆幅 < 60° 避免坠落</div>
         </div>
         
         <div id="startScreen">
-            <div class="title-container">
-            <h1>钢丝行者</h1>
-                <div class="title-decoration"></div>
-            </div>
-            <p>在钢丝上保持平衡，挑战最远距离！</p>
-            <p>← → 键：控制身体平衡</p>
-            <p>Z 键：伸长平衡杆</p>
-            <p>X 键：缩短平衡杆</p>
-            <p>收集道具获得特殊能力</p>
-            <p>保持摆幅 < 60° 避免坠落</p>
-            <div class="start-prompt">
-            <p>按空格键开始游戏</p>
-            </div>
+            <!-- 开始按钮 -->
+            <button id="startButton">
+                <span>按空格键开始游戏</span>
+            </button>
         </div>
         <div id="gameOver">
             <h2 id="gameOverTitle">游戏结束！</h2>

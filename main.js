@@ -548,12 +548,17 @@ class TightropeGame {
         this.wind.changeTimer++;
         if (this.wind.changeTimer >= this.wind.changeInterval) {
             this.wind.direction *= -1;
-            this.wind.force = (Math.random() - 0.5) * 0.3;
+            // 根据距离调整风力强度：初始较弱，随距离增加而增强
+            const baseWindStrength = 0.15; // 基础风力强度（从0.3降低到0.15）
+            const distanceMultiplier = Math.min(1 + (this.distance / 1000), 2); // 距离每1000米增加，最多2倍
+            this.wind.force = (Math.random() - 0.5) * baseWindStrength * distanceMultiplier;
             this.wind.changeTimer = 0;
-            this.wind.changeInterval = 30 + Math.random() * 60;
+            this.wind.changeInterval = 60 + Math.random() * 90; // 增加变化间隔（从30-90改为60-150帧）
         }
-        this.wind.force += (Math.random() - 0.5) * 0.02;
-        this.wind.force = Math.max(-0.5, Math.min(0.5, this.wind.force));
+        this.wind.force += (Math.random() - 0.5) * 0.01; // 降低风力波动速度（从0.02降低到0.01）
+        // 根据距离调整最大风力限制
+        const maxWindForce = 0.3 + (this.distance / 2000) * 0.2; // 初始最大0.3，随距离增加到0.5
+        this.wind.force = Math.max(-maxWindForce, Math.min(maxWindForce, this.wind.force));
     }
 
     updatePlayerBalance() {
@@ -573,7 +578,8 @@ class TightropeGame {
             this.player.swaySpeed = 0;
             return;
         }
-        let windEffect = this.wind.force * this.wind.direction * 0.5;
+        // 降低风力影响倍数，让游戏更容易控制
+        let windEffect = this.wind.force * this.wind.direction * 0.3; // 从0.5降低到0.3
         let controlForce = 0;
         if (!isImmuneToInput) {
             if (this.keys['ArrowLeft']) controlForce = -0.075;
@@ -581,7 +587,8 @@ class TightropeGame {
         }
         let totalForce = windEffect + controlForce;
         this.player.swaySpeed += totalForce;
-        let damping = 0.95;
+        // 增加阻尼系数，让摆幅更容易衰减
+        let damping = 0.97; // 从0.95增加到0.97
         for (let powerUp of this.activePowerUps) {
             if (powerUp.type === 'balance') damping = 0.98;
             else if (powerUp.type === 'unbalance') damping = 0.90;

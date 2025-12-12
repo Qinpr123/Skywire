@@ -45,7 +45,10 @@ class TightropeGame {
         this.distance = 0;
         this.speed = 0.083;
         this.score = 0;
-        this.highScore = parseInt(localStorage.getItem('tightropeHighScore') || 0);
+        // 多用户存档系统
+        this.currentUser = null;
+        this.users = this.loadUsers();
+        this.highScore = 0;
         this.gameStarted = false;
 
         // 初始化音效系统
@@ -97,6 +100,8 @@ class TightropeGame {
                 right_d2: null
             },
             bg_cloud: null,
+            end_fail: null,
+            end_success: null,
             ready: false, 
             loaded: 0 
         };
@@ -104,6 +109,7 @@ class TightropeGame {
         // 音频对象
         this.audio = {
             bgMusic: null,
+            failSound: null, // 失败音效
             loaded: 0,
             ready: false
         };
@@ -139,6 +145,235 @@ class TightropeGame {
         this.player.spriteHeight = 120; // 若后续需要按高度定位可用（目前按贴图原始尺寸）
 
         this.init();
+        this.initUserSystem();
+    }
+
+    // 多用户存档系统
+    loadUsers() {
+        const saved = localStorage.getItem('tightropeUsers');
+        if (saved) {
+            const users = JSON.parse(saved);
+            // 数据迁移：将"玩家1"重命名为"Q"
+            let hasChanged = false;
+            users.forEach(user => {
+                if (user.name === '玩家1') {
+                    user.name = 'Q';
+                    hasChanged = true;
+                }
+            });
+            if (hasChanged) {
+                this.saveUsers(users);
+            }
+            return users;
+        }
+        // 兼容旧版本：如果有旧记录，迁移到新系统
+        const oldHighScore = parseInt(localStorage.getItem('tightropeHighScore') || 0);
+        if (oldHighScore > 0) {
+            const users = [{ name: 'Q', highScore: oldHighScore }];
+            this.saveUsers(users);
+            localStorage.removeItem('tightropeHighScore'); // 移除旧数据
+            return users;
+        }
+        return [];
+    }
+
+    saveUsers(users) {
+        localStorage.setItem('tightropeUsers', JSON.stringify(users));
+    }
+
+    getCurrentUser() {
+        return this.currentUser;
+    }
+
+    setCurrentUser(userName) {
+        this.currentUser = userName;
+        const user = this.users.find(u => u.name === userName);
+        this.highScore = user ? user.highScore : 0;
+        localStorage.setItem('currentUser', userName);
+        this.updateUI();
+    }
+
+    createUser(userName) {
+        if (!userName || userName.trim() === '') {
+            alert('请输入玩家名称！');
+            return false;
+        }
+        if (this.users.find(u => u.name === userName)) {
+            alert('该玩家名称已存在！');
+            return false;
+        }
+        this.users.push({ name: userName, highScore: 0 });
+        this.saveUsers(this.users);
+        this.setCurrentUser(userName);
+        this.renderUserList();
+        this.renderLeaderboard();
+        return true;
+    }
+
+    updateUserScore(score) {
+        if (!this.currentUser) return;
+        const user = this.users.find(u => u.name === this.currentUser);
+        if (user && score > user.highScore) {
+            user.highScore = score;
+            this.saveUsers(this.users);
+            this.highScore = score;
+        }
+    }
+
+    initUserSystem() {
+        // 总是先显示用户选择界面，让用户选择或创建
+        this.showUserSelection();
+        this.renderUserList();
+        this.renderLeaderboard();
+        this.setupUserEventListeners();
+        this.updateProgressBarMarkers();
+        
+        // 如果有保存的当前用户，自动选中但不自动开始游戏
+        const savedCurrentUser = localStorage.getItem('currentUser');
+        if (savedCurrentUser && this.users.find(u => u.name === savedCurrentUser)) {
+            this.setCurrentUser(savedCurrentUser);
+            this.renderUserList();
+        }
+    }
+
+    showUserSelection() {
+        const userSelection = document.getElementById('userSelection');
+        const startButton = document.getElementById('startButton');
+        const startScreen = document.getElementById('startScreen');
+        userSelection.style.display = 'block';
+        startButton.style.display = 'none';
+        startScreen.style.justifyContent = 'center';
+        startScreen.style.padding = '40px';
+        startScreen.style.overflowY = 'auto';
+    }
+
+    showStartButton() {
+        const userSelection = document.getElementById('userSelection');
+        const startButton = document.getElementById('startButton');
+        const startScreen = document.getElementById('startScreen');
+        userSelection.style.display = 'none';
+        startButton.style.display = 'block';
+        startScreen.style.justifyContent = 'flex-end';
+        startScreen.style.paddingTop = '0';
+        startScreen.style.paddingLeft = '0';
+        startScreen.style.paddingRight = '0';
+        startScreen.style.paddingBottom = '120px'; // 下移100像素（从220px改回120px）
+        startScreen.style.overflowY = 'hidden';
+    }
+
+    renderUserList() {
+        const userList = document.getElementById('userList');
+        userList.innerHTML = '';
+        if (this.users.length === 0) {
+            userList.innerHTML = '<p style="color: #999; font-size: 0.9em;">暂无玩家，请创建新玩家</p>';
+            return;
+        }
+        this.users.forEach(user => {
+            const userItem = document.createElement('div');
+            userItem.className = 'user-item';
+            if (this.currentUser === user.name) {
+                userItem.classList.add('active');
+            }
+            
+            const userBtn = document.createElement('button');
+            userBtn.className = 'user-btn';
+            userBtn.innerHTML = `
+                <span class="user-name">${user.name}</span>
+                <span class="user-score">最高: ${user.highScore}m</span>
+            `;
+            userBtn.addEventListener('click', () => {
+                this.setCurrentUser(user.name);
+                this.renderUserList();
+                this.showStartButton();
+                this.updateProgressBarMarkers();
+            });
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-user-btn';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.title = '删除玩家';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (confirm(`确定要删除玩家"${user.name}"吗？`)) {
+                    this.deleteUser(user.name);
+                }
+            });
+            
+            userItem.appendChild(userBtn);
+            userItem.appendChild(deleteBtn);
+            userList.appendChild(userItem);
+        });
+    }
+
+    deleteUser(userName) {
+        // 如果删除的是当前用户，清除当前用户
+        if (this.currentUser === userName) {
+            this.currentUser = null;
+            localStorage.removeItem('currentUser');
+            this.highScore = 0;
+        }
+        // 从用户列表中删除
+        this.users = this.users.filter(u => u.name !== userName);
+        this.saveUsers(this.users);
+        this.renderUserList();
+        this.renderLeaderboard();
+        this.updateProgressBarMarkers();
+        // 如果没有用户了，显示用户选择界面
+        if (this.users.length === 0) {
+            this.showUserSelection();
+        }
+    }
+
+    renderLeaderboard() {
+        const leaderboardList = document.getElementById('leaderboardList');
+        leaderboardList.innerHTML = '';
+        if (this.users.length === 0) {
+            leaderboardList.innerHTML = '<p style="color: #999; font-size: 0.9em;">暂无记录</p>';
+            return;
+        }
+        // 按分数排序
+        const sortedUsers = [...this.users].sort((a, b) => b.highScore - a.highScore);
+        sortedUsers.forEach((user, index) => {
+            const rankItem = document.createElement('div');
+            rankItem.className = 'rank-item';
+            if (this.currentUser === user.name) {
+                rankItem.classList.add('current-user');
+            }
+            rankItem.innerHTML = `
+                <span class="rank-number">${index + 1}</span>
+                <span class="rank-name">${user.name}</span>
+                <span class="rank-score">${user.highScore}m</span>
+            `;
+            leaderboardList.appendChild(rankItem);
+        });
+    }
+
+    setupUserEventListeners() {
+        document.getElementById('createUserBtn').addEventListener('click', () => {
+            const userName = document.getElementById('newUserName').value.trim();
+            if (this.createUser(userName)) {
+                document.getElementById('newUserName').value = '';
+                this.showStartButton();
+            }
+        });
+
+        document.getElementById('newUserName').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('createUserBtn').click();
+            }
+        });
+
+        // 切换玩家按钮
+        const switchUserBtn = document.getElementById('switchUserBtn');
+        if (switchUserBtn) {
+            switchUserBtn.addEventListener('click', () => {
+                document.getElementById('gameOver').style.display = 'none';
+                document.getElementById('startScreen').style.display = 'flex';
+                this.showUserSelection();
+                this.renderUserList();
+                this.renderLeaderboard();
+            });
+        }
     }
 
     // 初始化音频系统
@@ -150,24 +385,21 @@ class TightropeGame {
         }
     }
 
-    // 播放游戏结束音效（低沉的失败音）
+    // 播放游戏结束音效（失败音效）
     playGameOverSound() {
-        if (!this.audioContext) return;
-        
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(100, this.audioContext.currentTime + 0.5);
-        
-        gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
-        
-        oscillator.start(this.audioContext.currentTime);
-        oscillator.stop(this.audioContext.currentTime + 0.5);
+        try {
+            // 创建音频元素播放失败音效
+            const failSound = new Audio('fail.MP3');
+            failSound.volume = 0.35; // 设置音量为35%（原来的一半）
+            failSound.playbackRate = 1.5; // 设置播放速度为1.5倍
+            failSound.play().catch(e => {
+                console.warn('失败音效播放失败:', e);
+            });
+            // 保存音频对象，以便后续停止
+            this.audio.failSound = failSound;
+        } catch (e) {
+            console.warn('无法加载失败音效文件:', e);
+        }
     }
 
     // 播放新纪录音效（鼓掌声音）
@@ -227,11 +459,11 @@ class TightropeGame {
         };
         const onLoaded = () => {
             this.images.loaded++;
-            if (this.images.loaded >= 14) { 
+            if (this.images.loaded >= 16) { 
                 this.images.ready = true; 
                 setBgLayer(); 
                 this.checkAllResourcesLoaded(); // 检查所有资源是否加载完成
-            } // 3个背景图 + 5个道具图 + 5个背景运动元素图 + 1个云层图
+            } // 3个背景图 + 5个道具图 + 5个背景运动元素图 + 1个云层图 + 2个结束界面图
         };
         const bg = new Image();
         bg.onload = onLoaded;
@@ -303,6 +535,15 @@ class TightropeGame {
         bg_cloud.onload = onLoaded;
         bg_cloud.src = 'image/bg_cloud.png';
         
+        // 加载游戏结束界面图片
+        const end_fail = new Image();
+        end_fail.onload = onLoaded;
+        end_fail.src = 'image/end_fail.jpg';
+        
+        const end_success = new Image();
+        end_success.onload = onLoaded;
+        end_success.src = 'image/end_success.jpg';
+        
         
         this.images.bg = bg;
         this.images.gs = gs;
@@ -318,6 +559,8 @@ class TightropeGame {
         this.images.landscape.right_d1 = right_d1;
         this.images.landscape.right_d2 = right_d2;
         this.images.bg_cloud = bg_cloud;
+        this.images.end_fail = end_fail;
+        this.images.end_success = end_success;
     }
 
     loadAudio() {
@@ -383,6 +626,14 @@ class TightropeGame {
         }
     }
 
+    stopFailSound() {
+        if (this.audio.failSound) {
+            this.audio.failSound.pause();
+            this.audio.failSound.currentTime = 0;
+            this.audio.failSound = null;
+        }
+    }
+
     setBackgroundMusicVolume(volume) {
         if (this.audio.bgMusic) {
             this.audio.bgMusic.volume = Math.max(0, Math.min(1, volume));
@@ -417,7 +668,12 @@ class TightropeGame {
             if (e.code === 'Space') {
                 e.preventDefault(); // 防止页面滚动
                 if (!this.gameRunning) {
-                this.startGame();
+                    // 检查是否有用户，如果没有则显示用户选择界面
+                    if (!this.currentUser) {
+                        this.showUserSelection();
+                        return;
+                    }
+                    this.startGame();
                 } else {
                     this.togglePause();
                 }
@@ -431,6 +687,11 @@ class TightropeGame {
         // 开始按钮点击事件
         document.getElementById('startButton').addEventListener('click', () => {
             if (!this.gameRunning) {
+                // 检查是否有用户，如果没有则显示用户选择界面
+                if (!this.currentUser) {
+                    this.showUserSelection();
+                    return;
+                }
                 this.startGame();
             }
         });
@@ -451,6 +712,8 @@ class TightropeGame {
         this.gameRunning = true;
         this.gamePaused = false;
         this.gameStarted = true;
+        // 停止失败音效（如果正在播放）
+        this.stopFailSound();
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('gameOver').style.display = 'none';
         document.getElementById('pauseScreen').style.display = 'none';
@@ -476,6 +739,8 @@ class TightropeGame {
     restartGame() {
         this.gameRunning = true;
         this.gamePaused = false;
+        // 停止失败音效（如果正在播放）
+        this.stopFailSound();
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('gameOver').style.display = 'none';
         document.getElementById('pauseScreen').style.display = 'none';
@@ -491,6 +756,7 @@ class TightropeGame {
     resetGame() {
         this.distance = 0;
         this.score = 0;
+        this.speed = 0.083; // 重置速度为初始值
         this.player.x = this.balancePivot.x;
         this.player.y = this.balancePivot.y;
         this.player.sway = 0;
@@ -505,6 +771,26 @@ class TightropeGame {
         this.powerUpSpawnTimer = 0;
         this.activePowerUps = [];
         this.balanceRod.length = this.balanceRod.baseLength ? this.balanceRod.baseLength * 0.78 : 60;
+        // 重新加载当前用户的最高分
+        if (this.currentUser) {
+            const user = this.users.find(u => u.name === this.currentUser);
+            this.highScore = user ? user.highScore : 0;
+        }
+        // 重置游戏结束标题样式
+        const titleElement = document.getElementById('gameOverTitle');
+        if (titleElement) {
+            titleElement.style.background = '';
+            titleElement.style.backgroundImage = '';
+            titleElement.style.backgroundSize = '';
+            titleElement.style.backgroundRepeat = '';
+            titleElement.style.backgroundPosition = '';
+            titleElement.style.width = '';
+            titleElement.style.height = '';
+            titleElement.style.minHeight = '';
+            titleElement.style.textIndent = '';
+            titleElement.classList.remove('has-image');
+            titleElement.innerHTML = '游戏结束！';
+        }
         this.updateUI();
     }
 
@@ -578,17 +864,39 @@ class TightropeGame {
             this.player.swaySpeed = 0;
             return;
         }
-        // 降低风力影响倍数，让游戏更容易控制
-        let windEffect = this.wind.force * this.wind.direction * 0.3; // 从0.5降低到0.3
+        // 根据平衡杆长度计算稳定性系数（0-1之间）
+        // 杆长更稳定（接近1），杆短更灵活但更易受风影响（接近0）
+        let rodLengthRatio = 0.78; // 默认值
+        if (this.balanceRod.baseLength > 0) {
+            rodLengthRatio = (this.balanceRod.length - this.balanceRod.minLength) / 
+                            (this.balanceRod.maxLength - this.balanceRod.minLength);
+            rodLengthRatio = Math.max(0, Math.min(1, rodLengthRatio)); // 限制在0-1之间
+        }
+        
+        // 杆长：更稳定（风力影响小，阻尼大）
+        // 杆短：更灵活（风力影响大，阻尼小，但控制响应快）
+        const stabilityFactor = rodLengthRatio; // 0（杆短）到1（杆长）
+        const flexibilityFactor = 1 - rodLengthRatio; // 1（杆短）到0（杆长）
+        
+        // 风力影响：杆短时风力影响更大，杆长时风力影响更小
+        const windMultiplier = 0.3 + flexibilityFactor * 0.2; // 0.3（杆长）到0.5（杆短）
+        let windEffect = this.wind.force * this.wind.direction * windMultiplier;
+        
+        // 控制力：杆短时响应更快，杆长时响应稍慢
+        const controlMultiplier = 0.075 + flexibilityFactor * 0.025; // 0.075（杆长）到0.1（杆短）
         let controlForce = 0;
         if (!isImmuneToInput) {
-            if (this.keys['ArrowLeft']) controlForce = -0.075;
-            if (this.keys['ArrowRight']) controlForce = 0.075;
+            if (this.keys['ArrowLeft']) controlForce = -controlMultiplier;
+            if (this.keys['ArrowRight']) controlForce = controlMultiplier;
         }
+        
         let totalForce = windEffect + controlForce;
         this.player.swaySpeed += totalForce;
-        // 增加阻尼系数，让摆幅更容易衰减
-        let damping = 0.97; // 从0.95增加到0.97
+        
+        // 阻尼系数：杆长时阻尼更大（更稳定），杆短时阻尼较小（更灵活但摆动更大）
+        // 基础阻尼从0.97开始，杆长时增加到0.98，杆短时降低到0.96
+        let damping = 0.97 + stabilityFactor * 0.01 - flexibilityFactor * 0.01; // 0.96（杆短）到0.98（杆长）
+        
         for (let powerUp of this.activePowerUps) {
             if (powerUp.type === 'balance') damping = 0.98;
             else if (powerUp.type === 'unbalance') damping = 0.90;
@@ -843,7 +1151,7 @@ class TightropeGame {
 
 
     spawnPowerUp() {
-        const types = ['speed', 'balance', 'slow', 'unbalance', 'speed', 'balance', 'slow', 'unbalance', 'explosion'];
+        const types = ['speed', 'balance', 'slow', 'unbalance', 'speed', 'slow', 'unbalance', 'explosion'];
         const type = types[Math.floor(Math.random() * types.length)];
         const tightropeX = this.balancePivot.x;
         const minDistance = this.balanceRod.minLength + 50; // 平衡杆最短+30像素
@@ -1155,12 +1463,14 @@ class TightropeGame {
         const isNewRecord = finalScore > this.highScore;
         const previousHighScore = this.highScore; // 保存之前的最高分
         
-        // 更新最高分
+        // 更新最高分（多用户系统）
         if (isNewRecord) {
-            this.highScore = finalScore;
-            localStorage.setItem('tightropeHighScore', this.highScore);
+            this.updateUserScore(finalScore);
             // 播放新纪录音效
             this.playNewRecordSound();
+            // 更新排行榜显示和进度条标记
+            this.renderLeaderboard();
+            this.updateProgressBarMarkers();
         } else {
             // 播放游戏结束音效
             this.playGameOverSound();
@@ -1171,8 +1481,18 @@ class TightropeGame {
         const messageElement = document.getElementById('gameOverMessage');
         
         if (isNewRecord) {
-            titleElement.textContent = '新纪录！';
-            titleElement.classList.add('new-record');
+            // 破纪录时显示成功图片
+            const imgSrc = (this.images.end_success && this.images.end_success.complete) 
+                ? this.images.end_success.src 
+                : 'image/end_success.jpg';
+            titleElement.innerHTML = `<img src="${imgSrc}" alt="新纪录" style="width: 100%; height: auto; display: block; margin: 0 auto;">`;
+            titleElement.style.background = 'none';
+            titleElement.style.backgroundImage = 'none';
+            titleElement.style.width = '100%';
+            titleElement.style.height = 'auto';
+            titleElement.style.minHeight = '150px';
+            titleElement.style.textIndent = '0';
+            titleElement.classList.add('new-record', 'has-image');
             messageElement.innerHTML = `
                 <div class="current-distance-box">
                     <span class="current-distance-text" style="font-size: 1.2em;">你走了 </span><span id="finalDistance">${finalScore}</span><span class="current-distance-unit" style="font-size: 1.2em;"> m</span>
@@ -1182,8 +1502,19 @@ class TightropeGame {
                 </div>
             `;
         } else {
-            titleElement.textContent = '就差一点点！';
+            // 未破纪录时显示失败图片
+            const imgSrc = (this.images.end_fail && this.images.end_fail.complete) 
+                ? this.images.end_fail.src 
+                : 'image/end_fail.jpg';
+            titleElement.innerHTML = `<img src="${imgSrc}" alt="就差一点点" style="width: 100%; height: auto; display: block; margin: 0 auto;">`;
+            titleElement.style.background = 'none';
+            titleElement.style.backgroundImage = 'none';
+            titleElement.style.width = '100%';
+            titleElement.style.height = 'auto';
+            titleElement.style.minHeight = '150px';
+            titleElement.style.textIndent = '0';
             titleElement.classList.remove('new-record');
+            titleElement.classList.add('has-image');
             messageElement.innerHTML = `
                 <div class="current-distance-box">
                     <span class="current-distance-text" style="font-size: 1.2em;">你走了 </span><span id="finalDistance">${finalScore}</span><span class="current-distance-unit" style="font-size: 1.2em;"> m</span>
@@ -1203,17 +1534,71 @@ class TightropeGame {
         const currentDistance = Math.floor(this.distance);
         const maxDistance = 6666;
         const progressPercentage = Math.min((currentDistance / maxDistance) * 100, 100);
-        const bestDistancePercentage = Math.min((this.highScore / maxDistance) * 100, 100);
         
         // 更新进度条
         document.getElementById('progressFill').style.width = progressPercentage + '%';
         document.getElementById('currentDistanceNumber').textContent = currentDistance;
         
-        // 更新最佳距离竖线和标签
-        const displayPercentage = Math.max(2, bestDistancePercentage); // 最小显示位置为2%
-        document.getElementById('bestDistanceLine').style.left = displayPercentage + '%';
-        document.getElementById('bestDistanceLabel').style.left = displayPercentage + '%';
-        document.getElementById('bestDistanceLabel').textContent = this.highScore + 'm';
+        // 更新所有玩家的标记
+        this.updateProgressBarMarkers();
+    }
+
+    updateProgressBarMarkers() {
+        const maxDistance = 6666;
+        const progressBar = document.getElementById('progressBar');
+        
+        // 清除旧的标记（除了bestDistanceLine和bestDistanceLabel）
+        const oldMarkers = progressBar.querySelectorAll('.player-marker, .player-marker-label');
+        oldMarkers.forEach(marker => marker.remove());
+        
+        // 获取所有用户，按分数排序
+        const sortedUsers = [...this.users].sort((a, b) => b.highScore - a.highScore);
+        
+        // 只显示前5名（避免太拥挤）
+        const topUsers = sortedUsers.slice(0, 5);
+        
+        topUsers.forEach((user, index) => {
+            if (user.highScore <= 0) return;
+            
+            const percentage = Math.min((user.highScore / maxDistance) * 100, 100);
+            const displayPercentage = Math.max(2, Math.min(98, percentage));
+            
+            // 创建标记线
+            const marker = document.createElement('div');
+            marker.className = 'player-marker';
+            if (this.currentUser === user.name) {
+                marker.classList.add('current-player');
+            }
+            marker.style.left = displayPercentage + '%';
+            marker.style.zIndex = 10 + index;
+            
+            // 创建标签
+            const label = document.createElement('div');
+            label.className = 'player-marker-label';
+            if (this.currentUser === user.name) {
+                label.classList.add('current-player');
+            }
+            label.style.left = displayPercentage + '%';
+            label.textContent = user.name.charAt(0) + ':' + user.highScore + 'm';
+            
+            progressBar.appendChild(marker);
+            progressBar.appendChild(label);
+        });
+        
+        // 更新当前玩家的最佳距离标记（如果存在）
+        if (this.currentUser && this.highScore > 0) {
+            const bestDistancePercentage = Math.min((this.highScore / maxDistance) * 100, 100);
+            const displayPercentage = Math.max(2, bestDistancePercentage);
+            const bestDistanceLine = document.getElementById('bestDistanceLine');
+            const bestDistanceLabel = document.getElementById('bestDistanceLabel');
+            if (bestDistanceLine) {
+                bestDistanceLine.style.left = displayPercentage + '%';
+            }
+            if (bestDistanceLabel) {
+                bestDistanceLabel.style.left = displayPercentage + '%';
+                bestDistanceLabel.textContent = this.highScore + 'm';
+            }
+        }
     }
 
     render() {

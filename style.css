@@ -250,6 +250,44 @@ body {
     min-width: 30px;
 }
 
+/* 玩家标记样式 */
+.player-marker {
+    position: absolute;
+    top: -5px;
+    width: 2px;
+    height: 30px;
+    background: rgba(255, 255, 255, 0.6);
+    z-index: 11;
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
+    border-radius: 1px;
+}
+
+.player-marker.current-player {
+    width: 3px;
+    background: #FFD700;
+    box-shadow: 0 0 6px rgba(255, 215, 0, 0.8);
+    z-index: 13;
+}
+
+.player-marker-label {
+    position: absolute;
+    top: -35px;
+    transform: translateX(-50%);
+    font-size: 0.7em;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+    z-index: 20;
+    font-weight: bold;
+}
+
+.player-marker-label.current-player {
+    color: #FFD700;
+    text-shadow: 0 0 5px rgba(255, 215, 0, 0.8);
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
 #audioControls {
     position: absolute;
     bottom: 20px;
@@ -420,9 +458,228 @@ body {
     z-index: 20;
     box-sizing: border-box;
     display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    padding-bottom: 120px; /* 下移100像素（从220px改回120px） */
+    overflow: hidden;
+}
+
+/* 当显示用户选择界面时，改为居中显示 */
+#userSelection[style*="display: block"] ~ #startButton,
+#startScreen:has(#userSelection[style*="display: block"]) {
     justify-content: center;
-    align-items: flex-end;
-    padding-bottom: 120px;
+    padding: 40px;
+    overflow-y: auto;
+}
+
+/* 当用户选择界面显示时，调整布局 */
+#startScreen:has(#userSelection:not([style*="display: none"])) {
+    justify-content: center;
+    padding: 40px;
+    overflow-y: auto;
+}
+
+/* 用户选择界面 */
+#userSelection {
+    width: 100%;
+    max-width: 600px;
+    background: linear-gradient(145deg, rgba(40,40,55,0.9), rgba(60,60,75,0.9));
+    border-radius: 20px;
+    padding: 30px;
+    color: white;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255,215,0,0.3);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+#userSelection h3 {
+    margin: 0 0 20px 0;
+    font-size: 1.8em;
+    text-align: center;
+    color: #FFD700;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+#userList {
+    margin-bottom: 25px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.user-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.user-item.active .user-btn {
+    background: linear-gradient(90deg, rgba(255,215,0,0.3), rgba(255,215,0,0.1));
+    border-color: #FFD700;
+    box-shadow: 0 0 15px rgba(255,215,0,0.3);
+}
+
+.delete-user-btn {
+    width: 35px;
+    height: 35px;
+    padding: 0;
+    background: rgba(255,0,0,0.2);
+    border: 2px solid rgba(255,0,0,0.4);
+    border-radius: 8px;
+    color: #ff6b6b;
+    cursor: pointer;
+    font-size: 1.5em;
+    line-height: 1;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.delete-user-btn:hover {
+    background: rgba(255,0,0,0.4);
+    border-color: #ff6b6b;
+    transform: scale(1.1);
+}
+
+.user-btn {
+    width: 100%;
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    background: rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 10px;
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1.1em;
+}
+
+.user-btn:hover {
+    background: rgba(255,255,255,0.2);
+    border-color: rgba(255,215,0,0.5);
+    transform: translateX(5px);
+}
+
+.user-btn.active {
+    background: linear-gradient(90deg, rgba(255,215,0,0.3), rgba(255,215,0,0.1));
+    border-color: #FFD700;
+    box-shadow: 0 0 15px rgba(255,215,0,0.3);
+}
+
+.user-name {
+    font-weight: bold;
+}
+
+.user-score {
+    font-size: 0.9em;
+    color: #FFD700;
+}
+
+#userInputArea {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 25px;
+}
+
+#newUserName {
+    flex: 1;
+    padding: 12px 15px;
+    background: rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    color: white;
+    font-size: 1em;
+    outline: none;
+}
+
+#newUserName::placeholder {
+    color: rgba(255,255,255,0.5);
+}
+
+#newUserName:focus {
+    border-color: #FFD700;
+    background: rgba(255,255,255,0.15);
+}
+
+#createUserBtn {
+    padding: 12px 25px;
+    background: linear-gradient(145deg, #FFD700, #FFA500);
+    border: 2px solid #FFD700;
+    border-radius: 8px;
+    color: #000;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 1em;
+}
+
+#createUserBtn:hover {
+    background: linear-gradient(145deg, #FFA500, #FFD700);
+    box-shadow: 0 0 15px rgba(255,215,0,0.5);
+    transform: scale(1.05);
+}
+
+#leaderboard {
+    margin-top: 25px;
+    padding-top: 25px;
+    border-top: 2px solid rgba(255,255,255,0.2);
+}
+
+#leaderboard h4 {
+    margin: 0 0 15px 0;
+    font-size: 1.3em;
+    color: #FFD700;
+    text-align: center;
+}
+
+#leaderboardList {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.rank-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: all 0.3s ease;
+}
+
+.rank-item:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.rank-item.current-user {
+    background: linear-gradient(90deg, rgba(255,215,0,0.2), rgba(255,215,0,0.05));
+    border-color: #FFD700;
+}
+
+.rank-number {
+    width: 30px;
+    font-weight: bold;
+    color: #FFD700;
+    font-size: 1.2em;
+}
+
+.rank-name {
+    flex: 1;
+    margin-left: 15px;
+    font-size: 1.1em;
+}
+
+.rank-score {
+    color: #FFD700;
+    font-weight: bold;
+    font-size: 1.1em;
 }
 
 /* 开始按钮样式 */
@@ -590,20 +847,21 @@ body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: linear-gradient(145deg, rgba(0,0,0,0.95), rgba(20,20,30,0.95));
+    background: linear-gradient(145deg, rgba(40,40,55,0.85), rgba(60,60,75,0.85));
     color: white;
-    padding: 50px 40px;
+    padding: 60px 40px;
     border-radius: 25px;
     text-align: center;
     display: none;
     z-index: 20;
-    border: 3px solid rgba(255,215,0,0.4);
-    box-shadow: 0 20px 40px rgba(0,0,0,0.7), 
-                0 0 30px rgba(255,215,0,0.3),
-                inset 0 1px 0 rgba(255,255,255,0.1);
+    border: 3px solid rgba(255,215,0,0.3);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5), 
+                0 0 30px rgba(255,215,0,0.2),
+                inset 0 1px 0 rgba(255,255,255,0.15);
     backdrop-filter: blur(15px);
     max-width: 600px;
     width: 90%;
+    min-height: 500px;
     animation: gameOverSlideIn 0.5s ease-out;
 }
 
@@ -629,6 +887,32 @@ body {
     letter-spacing: 2px;
     color: #FFF;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    display: block;
+    min-height: 150px;
+    text-align: center;
+    width: 100%;
+}
+
+/* 当包含img标签时，隐藏文字样式 */
+#gameOverTitle img {
+    display: block;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+/* 当使用图片时，通过类名来隐藏文字效果 */
+#gameOverTitle.has-image {
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    -webkit-text-fill-color: unset !important;
+    background-clip: unset !important;
+    color: transparent !important;
+    text-shadow: none !important;
+    font-size: 0;
 }
 
 #gameOverTitle.new-record {
@@ -637,6 +921,15 @@ body {
     -webkit-text-fill-color: transparent;
     background-clip: text;
     color: transparent;
+}
+
+/* 当使用图片时，覆盖new-record的文字渐变效果 */
+#gameOverTitle.new-record.has-image {
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    -webkit-text-fill-color: unset !important;
+    background-clip: unset !important;
+    color: transparent !important;
 }
 
 #gameOverTitle::after {

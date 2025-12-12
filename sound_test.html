@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音效测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            text-align: center;
+            padding: 50px;
+        }
+        button {
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            border: none;
+            padding: 20px 40px;
+            font-size: 18px;
+            color: #000;
+            border-radius: 10px;
+            margin: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #FFD700;
+            margin-bottom: 30px;
+        }
+        p {
+            color: #ccc;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 钢丝行者音效测试</h1>
+        <p>点击下面的按钮来试听游戏中的音效</p>
+        
+        <button onclick="playBackgroundMusicTest()">🎵 播放背景音乐测试<br><small>（3秒后出现新音效）</small></button>
+        
+        <button onclick="playGameOverSound()">🎮 游戏结束音效<br><small>（就差一点点）</small></button>
+        
+        <button onclick="playNewRecordSound()">🏆 新纪录音效<br><small>（鼓掌声）</small></button>
+        
+        <p style="margin-top: 40px; font-size: 14px; color: #888;">
+            注意：首次播放需要用户交互才能激活音频上下文
+        </p>
+    </div>
+
+    <script>
+        let audioContext = null;
+
+        // 初始化音频系统
+        function initAudio() {
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    alert('您的浏览器不支持Web Audio API');
+                }
+            }
+        }
+
+        // 播放背景音乐测试（3秒后突然出现新音效）
+        function playBackgroundMusicTest() {
+            initAudio();
+            if (!audioContext) return;
+            
+            const now = audioContext.currentTime;
+            
+            // 创建背景音乐（模拟游戏背景音）
+            const bgOscillator1 = audioContext.createOscillator();
+            const bgOscillator2 = audioContext.createOscillator();
+            const bgGainNode = audioContext.createGain();
+            
+            bgOscillator1.connect(bgGainNode);
+            bgOscillator2.connect(bgGainNode);
+            bgGainNode.connect(audioContext.destination);
+            
+            // 背景音乐设置
+            bgOscillator1.type = 'sine';
+            bgOscillator1.frequency.setValueAtTime(440, now); // A4音符
+            
+            bgOscillator2.type = 'sine';
+            bgOscillator2.frequency.setValueAtTime(554.37, now); // C#5音符
+            
+            bgGainNode.gain.setValueAtTime(0.1, now);
+            bgGainNode.gain.linearRampToValueAtTime(0.05, now + 1);
+            
+            bgOscillator1.start(now);
+            bgOscillator2.start(now);
+            bgOscillator1.stop(now + 5);
+            bgOscillator2.stop(now + 5);
+            
+            // 3秒后突然出现新音效（游戏结束音）
+            setTimeout(() => {
+                const surpriseOscillator = audioContext.createOscillator();
+                const surpriseGainNode = audioContext.createGain();
+                
+                surpriseOscillator.connect(surpriseGainNode);
+                surpriseGainNode.connect(audioContext.destination);
+                
+                surpriseOscillator.frequency.setValueAtTime(300, audioContext.currentTime);
+                surpriseOscillator.frequency.exponentialRampToValueAtTime(150, audioContext.currentTime + 0.8);
+                
+                surpriseGainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+                surpriseGainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8);
+                
+                surpriseOscillator.start(audioContext.currentTime);
+                surpriseOscillator.stop(audioContext.currentTime + 0.8);
+            }, 3000);
+        }
+
+        // 播放游戏结束音效（低沉的失败音）
+        function playGameOverSound() {
+            initAudio();
+            if (!audioContext) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(200, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.5);
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.5);
+        }
+
+        // 播放新纪录音效（鼓掌声音）
+        function playNewRecordSound() {
+            try {
+                // 创建音频元素播放鼓掌音效
+                const clapSound = new Audio('claps.MP3');
+                clapSound.volume = 0.7; // 设置音量为70%
+                clapSound.play().catch(e => {
+                    console.warn('新纪录音效播放失败:', e);
+                    alert('无法播放新纪录音效文件');
+                });
+            } catch (e) {
+                console.warn('无法加载新纪录音效文件:', e);
+                alert('无法加载新纪录音效文件');
+            }
+        }
+    </script>
+</body>
+</html>

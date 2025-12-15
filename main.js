@@ -45,6 +45,7 @@ class TightropeGame {
         this.distance = 0;
         this.speed = 0.083;
         this.score = 0;
+        this.gameFrameCount = 0; // 游戏帧计数器（只在游戏运行时增加，用于landscape时间计算）
         // 垂死挣扎机制（倾斜边界）
         this.dangerZoneTimer = 0; // 进入危险区域的时间（帧数）
         this.dangerZoneDuration = 180; // 垂死挣扎时间：3秒（60fps * 3）
@@ -54,8 +55,9 @@ class TightropeGame {
         this.bombRescue = {
             active: false,   // 是否处于Q键救援阶段
             timer: 0,        // 已经过的帧数
-            duration: 90,    // 救援持续时间：1.5秒（60fps * 1.5）
-            resolved: false  // 是否已经处理（成功或失败）
+            duration: 108,   // 救援持续时间：1.8秒（60fps * 1.8）
+            resolved: false,  // 是否已经处理（成功或失败）
+            contactAngle: 0  // 接触炸弹时的角度
         };
         // 绝处逢生成功后的护罩动画状态（与金色文字同步淡出）
         this.bombRescueShield = {
@@ -92,6 +94,10 @@ class TightropeGame {
             changeTimer: 0,
             changeInterval: 60
         };
+        
+        // 偏转速度限制（度/秒）
+        this.maxWindSwaySpeedPerSecond = 30; // 风力影响每秒最大偏转30度
+        this.maxControlSwaySpeedPerSecond = 45; // 按键影响每秒最大偏转45度
 
         this.background = {
             offset: 0,
@@ -129,9 +135,12 @@ class TightropeGame {
             bgMusic: null,
             failSound: null, // 失败音效
             bombFuse: null,  // 炸弹引线音效
+            bombExplosion: null, // 炸弹爆炸音效
             loaded: 0,
             ready: false
         };
+        // 当前场景中存在的炸弹数量（用于控制引线音效）
+        this.activeBombCount = 0;
         this.loadImages();
         this.loadAudio();
         // 角色帧动画
@@ -140,7 +149,7 @@ class TightropeGame {
 
         this.particles = [];
         this.landscape = [];
-        this.landscapeSpeed = this.speed * 1; // 基础速度等于角色速度
+        // landscapeSpeed 不再使用，动态背景使用固定流程
         this.leftSpawnTimer = 0;
         this.leftSpawnInterval = 300 + Math.random() * 360; // 左边5-12秒随机间隔 (300-660帧)
         this.rightSpawnTimer = 0;
@@ -154,7 +163,7 @@ class TightropeGame {
             length: 0, // 当前长度，将在图片加载后设置
             minLength: 0, // 最小长度（原图的50%），将在图片加载后设置
             maxLength: 0, // 最大长度（原图的150%），将在图片加载后设置
-            extendSpeed: 2
+            extendSpeed: 2.5  // 提升伸缩速度，但保持一定操作难度
         };
         this.keys = {};
         // 角色动画状态（步幅与帧）
@@ -586,7 +595,8 @@ class TightropeGame {
         const onAudioLoaded = () => {
             this.audio.loaded++;
             console.log('音频加载完成，已加载:', this.audio.loaded);
-            if (this.audio.loaded >= 1) { // 1个背景音乐
+            // 背景音乐 + 炸弹引线 + 炸弹爆炸，至少三个音频就绪
+            if (this.audio.loaded >= 3) {
                 this.audio.ready = true;
                 console.log('音频系统准备就绪');
                 this.checkAllResourcesLoaded(); // 检查所有资源是否加载完成
@@ -610,6 +620,37 @@ class TightropeGame {
         
         console.log('开始加载背景音乐:', bgMusic.src);
         this.audio.bgMusic = bgMusic;
+
+        // 加载炸弹引线音效
+        const fuseAudio = new Audio();
+        fuseAudio.oncanplaythrough = () => {
+            console.log('炸弹引线音效可以播放');
+            onAudioLoaded();
+        };
+        fuseAudio.onerror = (e) => {
+            console.warn('炸弹引线音效文件不存在或加载失败，游戏将继续运行', e);
+            onAudioLoaded();
+        };
+        fuseAudio.src = '../fuse.MP3';
+        fuseAudio.loop = true;
+        fuseAudio.volume = 0.6;
+        fuseAudio.preload = 'auto';
+        this.audio.bombFuse = fuseAudio;
+
+        // 加载炸弹爆炸音效
+        const bombAudio = new Audio();
+        bombAudio.oncanplaythrough = () => {
+            console.log('炸弹爆炸音效可以播放');
+            onAudioLoaded();
+        };
+        bombAudio.onerror = (e) => {
+            console.warn('炸弹爆炸音效文件不存在或加载失败，游戏将继续运行', e);
+            onAudioLoaded();
+        };
+        bombAudio.src = '../bomb.MP3';
+        bombAudio.volume = 0.6;
+        bombAudio.preload = 'auto';
+        this.audio.bombExplosion = bombAudio;
     }
 
     init() {
@@ -688,6 +729,11 @@ class TightropeGame {
             if (this.bombRescue.active && !this.bombRescue.resolved && e.code === 'KeyQ') {
                 e.preventDefault();
                 this.handleBombRescueSuccess();
+                return;
+            }
+            // 炸弹绝处逢生阶段，禁止空格键暂停/开始游戏
+            if (this.bombRescue.active && !this.bombRescue.resolved && e.code === 'Space') {
+                e.preventDefault();
                 return;
             }
             if (e.code === 'Space') {
@@ -782,6 +828,7 @@ class TightropeGame {
         this.distance = 0;
         this.score = 0;
         this.speed = 0.083; // 重置速度为初始值
+        this.gameFrameCount = 0; // 重置游戏帧计数器
         this.player.x = this.balancePivot.x;
         this.player.y = this.balancePivot.y;
         this.player.sway = 0;
@@ -801,8 +848,12 @@ class TightropeGame {
         this.bombRescue.active = false;
         this.bombRescue.timer = 0;
         this.bombRescue.resolved = false;
+        this.bombRescue.contactAngle = 0;
         this.bombRescueShield.active = false;
         this.bombRescueShield.timer = 0;
+        // 重置炸弹计数并停止引线音效
+        this.activeBombCount = 0;
+        this.stopBombFuseSound();
         // 重新加载当前用户的最高分
         if (this.currentUser) {
             const user = this.users.find(u => u.name === this.currentUser);
@@ -832,16 +883,17 @@ class TightropeGame {
         if (this.bombRescue.active) {
             this.updateBombRescue();
         } else {
+            this.gameFrameCount++; // 游戏帧计数器增加（用于landscape时间计算）
             this.distance += this.speed;
             this.score = Math.floor(this.distance);
             this.updateWind();
+            this.updateBalanceRod(); // 先更新平衡杆长度，确保参数计算使用最新值
             this.updatePlayerBalance();
             this.updatePlayerAnimation();
             this.updateBackground();
             this.updateParticles();
             this.updateLandscape();
             this.updatePowerUps();
-            this.updateBalanceRod();
             this.checkGameOver();
         }
         // 绝处逢生护罩动画独立更新（不阻塞游戏）
@@ -860,6 +912,8 @@ class TightropeGame {
                 movePxPerFrame *= 0.8;
             }
         }
+        // 确保动画速度有最小值，避免多次减速后完全停滞
+        movePxPerFrame = Math.max(movePxPerFrame, 0.1);
         this.player.stepAccumPx += movePxPerFrame;
         while (this.player.stepAccumPx >= this.player.stepLengthPx) {
             this.player.stepAccumPx -= this.player.stepLengthPx;
@@ -878,7 +932,7 @@ class TightropeGame {
             const distanceMultiplier = Math.min(1 + (this.distance / 1000), 2); // 距离每1000米增加，最多2倍
             this.wind.force = (Math.random() - 0.5) * baseWindStrength * distanceMultiplier;
             this.wind.changeTimer = 0;
-            this.wind.changeInterval = 60 + Math.random() * 90; // 增加变化间隔（从30-90改为60-150帧）
+            this.wind.changeInterval = 120 + Math.random() * 120; // 变化间隔（120-240帧，约2-4秒）
         }
         this.wind.force += (Math.random() - 0.5) * 0.01; // 降低风力波动速度（从0.02降低到0.01）
         // 根据距离调整最大风力限制
@@ -921,15 +975,86 @@ class TightropeGame {
         const windMultiplier = 0.3 + flexibilityFactor * 0.2; // 0.3（杆长）到0.5（杆短）
         let windEffect = this.wind.force * this.wind.direction * windMultiplier;
         
+        // 杆长时风力影响降低为40%
+        const rodLengthWindReduction = 0.4 + flexibilityFactor * 0.6; // 0.4（杆长）到1.0（杆短）
+        windEffect *= rodLengthWindReduction;
+        
+        // 根据角色偏转角度调整风力影响：15度以下100%，15-50度逐渐减少，50度以上接近0
+        const absSway = Math.abs(this.player.sway);
+        let windReductionFactor = 1.0; // 风力衰减系数
+        if (absSway > 15) {
+            if (absSway >= 50) {
+                windReductionFactor = 0.05; // 50度以上风力影响接近0（保留5%）
+            } else {
+                // 15-50度之间线性插值：从1.0减少到0.05
+                const progress = (absSway - 15) / (50 - 15); // 0到1之间
+                windReductionFactor = 1.0 - progress * 0.95; // 从1.0减少到0.05
+            }
+        }
+        windEffect *= windReductionFactor;
+        
+        // 重力影响：当角度大于15度时逐渐增加，加速偏离（与sway方向相同）
+        let gravityEffect = 0;
+        let gravityStrength = 0; // 重力强度系数（0-1），用于同时增强按键对抗
+        if (absSway > 15) {
+            if (absSway >= 50) {
+                gravityStrength = 1.0; // 50度以上重力影响达到最大值
+            } else {
+                // 15-50度之间线性插值：从0增加到1.0
+                const progress = (absSway - 15) / (50 - 15); // 0到1之间
+                gravityStrength = progress; // 从0增加到1.0
+            }
+            // 重力方向与sway相同，加速偏离（sway为正时，重力为正；sway为负时，重力为负）
+            const baseGravityForce = 0.04; // 基础重力强度
+            // 杆长时重力影响降低为40%
+            const rodLengthGravityReduction = 0.4 + flexibilityFactor * 0.6; // 0.4（杆长）到1.0（杆短）
+            gravityEffect = (this.player.sway > 0 ? 1 : -1) * baseGravityForce * gravityStrength * rodLengthGravityReduction;
+        }
+        
         // 控制力：杆短时响应更快，杆长时响应稍慢
-        const controlMultiplier = 0.075 + flexibilityFactor * 0.025; // 0.075（杆长）到0.1（杆短）
+        // 当重力影响增大时，按键对抗作用也增强（与重力强度成正比）
+        const baseControlMultiplier = 0.025 + flexibilityFactor * 0.035; // 0.025（杆长）到0.06（杆短）
+        // 根据角度增强按键控制力
+        let controlEnhancement;
+        if (absSway <= 15) {
+            // 角度≤15度：基础增强1.0倍
+            controlEnhancement = 1.0;
+        } else if (absSway < 50) {
+            // 15-50度：从1.0倍线性增加到1.8倍
+            const progress = (absSway - 15) / (50 - 15);
+            controlEnhancement = 1.0 + progress * 0.8;
+        } else if (absSway < 70) {
+            // 50-70度：从1.8倍线性增加到2.0倍（短杆时）
+            const progress = (absSway - 50) / (70 - 50);
+            // 短杆时（flexibilityFactor接近1）继续增强，长杆时保持1.8倍
+            const shortRodEnhancement = 1.8 + progress * 0.2; // 从1.8增加到2.0
+            controlEnhancement = 1.8 + (shortRodEnhancement - 1.8) * flexibilityFactor; // 短杆时增强，长杆时保持1.8
+        } else {
+            // 角度≥70度：短杆时2.0倍，长杆时1.8倍
+            controlEnhancement = 1.8 + 0.2 * flexibilityFactor;
+        }
+        const controlMultiplier = baseControlMultiplier * controlEnhancement;
         let controlForce = 0;
         if (!isImmuneToInput) {
             if (this.keys['ArrowLeft']) controlForce = -controlMultiplier;
             if (this.keys['ArrowRight']) controlForce = controlMultiplier;
         }
         
-        let totalForce = windEffect + controlForce;
+        // 限制风力和按键影响的每秒最大偏转速度（假设60fps）
+        const fps = 60;
+        const maxWindSwaySpeedPerFrame = this.maxWindSwaySpeedPerSecond / fps; // 每帧最大风力偏转速度
+        const maxControlSwaySpeedPerFrame = this.maxControlSwaySpeedPerSecond / fps; // 每帧最大按键偏转速度
+        
+        // 限制风力影响的增量
+        const currentWindSpeedChange = windEffect;
+        const clampedWindSpeedChange = Math.max(-maxWindSwaySpeedPerFrame, Math.min(maxWindSwaySpeedPerFrame, currentWindSpeedChange));
+        
+        // 限制按键影响的增量
+        const currentControlSpeedChange = controlForce;
+        const clampedControlSpeedChange = Math.max(-maxControlSwaySpeedPerFrame, Math.min(maxControlSwaySpeedPerFrame, currentControlSpeedChange));
+        
+        // 应用限制后的力（包括风力、按键和重力）
+        let totalForce = clampedWindSpeedChange + clampedControlSpeedChange + gravityEffect;
         this.player.swaySpeed += totalForce;
         
         // 阻尼系数：杆长时阻尼更大（更稳定），杆短时阻尼较小（更灵活但摆动更大）
@@ -974,62 +1099,79 @@ class TightropeGame {
     }
 
     updateLandscape() {
-        let baseSpeed = this.speed * 1; // 基础速度等于角色速度
-        // 检查所有加速和减速道具，进行叠加计算
-        for (let powerUp of this.activePowerUps) {
-            if (powerUp.type === 'speed') { 
-                baseSpeed *= 1.4; 
-            } else if (powerUp.type === 'slow') {
-                baseSpeed *= 0.7; // 减速道具对背景运动的影响
-            }
-        }
-        this.landscapeSpeed = baseSpeed;
-        // 左边元素生成
+        // 左边元素生成（固定间隔，不受速度影响）
         this.leftSpawnTimer++;
         if (this.leftSpawnTimer >= this.leftSpawnInterval) {
             this.spawnLandscapeElement('left');
             this.leftSpawnTimer = 0;
-            // 根据角色速度调整生成间隔：速度越快，间隔越短
             const baseInterval = 300 + Math.random() * 360; // 基础间隔5-12秒
-            const speedMultiplier = Math.max(0.3, 1 - (this.speed - 0.083) * 2); // 速度越快，倍数越小
-            this.leftSpawnInterval = Math.max(50, baseInterval * speedMultiplier); // 最小间隔50帧
+            this.leftSpawnInterval = baseInterval;
         }
         
-        // 右边元素生成
+        // 右边元素生成（固定间隔，不受速度影响）
         this.rightSpawnTimer++;
         if (this.rightSpawnTimer >= this.rightSpawnInterval) {
             this.spawnLandscapeElement('right');
             this.rightSpawnTimer = 0;
-            // 根据角色速度调整生成间隔：速度越快，间隔越短
             const baseInterval = 300 + Math.random() * 360; // 基础间隔5-12秒
-            const speedMultiplier = Math.max(0.3, 1 - (this.speed - 0.083) * 2); // 速度越快，倍数越小
-            this.rightSpawnInterval = Math.max(50, baseInterval * speedMultiplier); // 最小间隔50帧
+            this.rightSpawnInterval = baseInterval;
         }
+        
+        // 固定基础速度，不受道具影响（视觉轨迹恒定）
+        const fixedBaseSpeed = 0.083;
+        // 仅用于控制平移速度的缩放系数（不影响缩放和角度）
+        let moveSpeedScale = 1.0;
+        for (let powerUp of this.activePowerUps) {
+            if (powerUp.type === 'speed') { 
+                moveSpeedScale *= 1.4;
+            } else if (powerUp.type === 'slow') {
+                moveSpeedScale *= 0.7;
+            }
+        }
+        moveSpeedScale = Math.max(0.5, Math.min(moveSpeedScale, 2.0));
+        
         for (let i = this.landscape.length - 1; i >= 0; i--) {
             const element = this.landscape[i];
-            const s = this.landscapeSpeed;
-            // 曲线移动：基于基础速度，角度从30度到45度再到60度，速度逐渐加速
-            const currentTime = Date.now();
-            const timeElapsed = (currentTime - element.spawnTime) / 1000; // 出现时间（秒）
+            // 使用游戏帧数计算时间（不受道具影响）
+            const framesElapsed = this.gameFrameCount - (element.spawnFrame || 0);
+            const timeElapsed = framesElapsed / 60; // 转换为秒（假设60fps）
             const dir = element.dir || 1; // -1 左下，1 右下
             
-            // 角度变化：基于基础速度，前7s是30度方向，后7s过渡到45度，再平滑过渡到60度
-            let currentAngle;
+            // 角度变化：基于固定时间流程，前7s是30度方向，后7s过渡到45度，再平滑过渡到60度
+            // 计算目标角度
+            let targetAngle;
             if (timeElapsed <= 7) {
                 // 前7秒：保持30度方向
-                currentAngle = 30;
+                targetAngle = 30;
             } else if (timeElapsed <= 14) {
                 // 7-14秒：从30度过渡到45度
                 const angleProgress = (timeElapsed - 7) / 7;
-                currentAngle = 30 + (45 - 30) * angleProgress;
+                targetAngle = 30 + (45 - 30) * angleProgress;
             } else {
                 // 14秒后：从45度平滑过渡到60度
                 const angleProgress = Math.min((timeElapsed - 14) / 14, 1); // 14秒内完成过渡
-                currentAngle = 45 + (60 - 45) * angleProgress;
+                targetAngle = 45 + (60 - 45) * angleProgress;
             }
             
-            // 速度变化：基于基础速度(speed*1)的倍数变化
-            const baseSpeed = this.speed * 1; // 基础速度
+            // 限制每帧角度变化速率：每秒最大变化5度（60fps时每帧约0.083度）
+            const maxAngleChangePerSecond = 5.0; // 每秒最大变化5度
+            const maxAngleChangePerFrame = maxAngleChangePerSecond / 60; // 每帧最大变化约0.083度
+            
+            // 初始化角度（如果不存在）
+            if (element.currentAngle === undefined) {
+                element.currentAngle = 30;
+            }
+            
+            // 计算角度差，并限制变化速率
+            let angleDiff = targetAngle - element.currentAngle;
+            if (Math.abs(angleDiff) > maxAngleChangePerFrame) {
+                angleDiff = Math.sign(angleDiff) * maxAngleChangePerFrame;
+            }
+            element.currentAngle += angleDiff;
+            
+            const currentAngle = element.currentAngle;
+            
+            // 速度变化：基于固定基础速度的倍数变化（只用于“流程快慢”，不改变轨迹形状）
             let speedMultiplier;
             if (timeElapsed <= 5) {
                 // 0-5秒：从1倍到1.5倍，使用平滑曲线
@@ -1049,7 +1191,7 @@ class TightropeGame {
                 speedMultiplier = 8 + 2 * (progress * progress); // 平方曲线
             }
             speedMultiplier = Math.min(speedMultiplier, 10); // 最大10倍
-            const currentSpeed = baseSpeed * speedMultiplier;
+            const currentSpeed = fixedBaseSpeed * speedMultiplier * moveSpeedScale;
             
             // 根据当前角度计算移动分量
             const angleRad = currentAngle * Math.PI / 180;
@@ -1060,22 +1202,22 @@ class TightropeGame {
             element.y += moveY;
             
             // 缩放逻辑：基于基础速度，与速度变化同步
-            const baseScale = 0.1125; // 初始缩放
+            const baseScale = 0.08; // 初始缩放（减小）
             let targetScale;
             if (timeElapsed <= 7) {
-                // 前7秒：从初始缩放到0.5倍（与30度角度对应）
+                // 前7秒：从初始缩放到0.35倍（与30度角度对应，减小）
                 const scaleProgress = timeElapsed / 7;
-                targetScale = baseScale + (0.5 - baseScale) * scaleProgress;
+                targetScale = baseScale + (0.35 - baseScale) * scaleProgress;
             } else if (timeElapsed <= 14) {
-                // 7-14秒：从0.5倍到1.0倍（与45度角度对应）
+                // 7-14秒：从0.35倍到0.7倍（与45度角度对应，减小）
                 const scaleProgress = (timeElapsed - 7) / 7;
-                targetScale = 0.5 + (1.0 - 0.5) * scaleProgress;
+                targetScale = 0.35 + (0.7 - 0.35) * scaleProgress;
             } else {
-                // 14秒后：从1.0倍到2.2倍（与60度角度对应）
+                // 14秒后：从0.7倍到1.5倍（与60度角度对应，减小）
                 const scaleProgress = Math.min((timeElapsed - 14) / 14, 1);
-                targetScale = 1.0 + (2.2 - 1.0) * scaleProgress;
+                targetScale = 0.7 + (1.5 - 0.7) * scaleProgress;
             }
-            element.scale = Math.min(targetScale, 2.2); // 最大缩放到2.2倍
+            element.scale = Math.min(targetScale, 1.5); // 最大缩放到1.5倍（减小）
             
             if (element.y > this.height + 200 || element.x < -200 || element.x > this.width + 200) this.landscape.splice(i, 1);
         }
@@ -1087,19 +1229,51 @@ class TightropeGame {
         if (this.powerUpSpawnTimer >= this.powerUpSpawnInterval) {
             this.spawnPowerUp();
             this.powerUpSpawnTimer = 0;
-            this.powerUpSpawnInterval = 60 + Math.random() * 60;
+            // 道具生成间隔：开局密度减半，随着距离逐渐恢复到原始密度，500米后进一步增加难度
+            const baseInterval = 60 + Math.random() * 60; // 原始：60-120 帧
+            let densityFactor;
+            if (this.distance < 500) {
+                // 0-500米：从2逐渐减到1
+                densityFactor = 2 - (this.distance / 500);
+            } else {
+                // 500米后：继续减少，最低到0.4（更高密度）
+                const progress = Math.min((this.distance - 500) / 2000, 1); // 500-2500米之间
+                densityFactor = 1 - progress * 0.6; // 从1减少到0.4
+            }
+            this.powerUpSpawnInterval = baseInterval * densityFactor;
         }
         for (let i = this.powerUps.length - 1; i >= 0; i--) {
             const powerUp = this.powerUps[i];
-            powerUp.y += 7;
-            // 炸弹经过主角位置之后，停止引线音效（不会再被接到）
-            if (powerUp.type === 'explosion' && powerUp.y > this.balancePivot.y + 50) {
-                this.stopBombFuseSound();
+            // 道具下落速度：前期减半，随着行进距离逐渐加快，500米后进一步加速
+            const baseFallSpeed = 3.5; // 原来7的一半
+            let speedFactor;
+            if (this.distance < 500) {
+                // 0-500米：从1逐渐增加到2
+                speedFactor = 1 + (this.distance / 500);
+            } else {
+                // 500米后：继续加速，最高到2.5倍（更快下落）
+                const progress = Math.min((this.distance - 500) / 2000, 1); // 500-2500米之间
+                speedFactor = 2 + progress * 0.5; // 从2增加到2.5
             }
+            powerUp.y += baseFallSpeed * speedFactor;
             if (this.checkPowerUpCollision(powerUp)) {
                 this.collectPowerUp(powerUp);
+                // 如果是炸弹被吃到，移除时减少计数
+                if (powerUp.type === 'explosion') {
+                    this.activeBombCount = Math.max(0, this.activeBombCount - 1);
+                    if (this.activeBombCount === 0) {
+                        this.stopBombFuseSound();
+                    }
+                }
                 this.powerUps.splice(i, 1);
             } else if (powerUp.y > this.height + 100) {
+                // 炸弹完全离场时，减少计数，并在最后一个炸弹离场后停止引线音效
+                if (powerUp.type === 'explosion') {
+                    this.activeBombCount = Math.max(0, this.activeBombCount - 1);
+                    if (this.activeBombCount === 0) {
+                        this.stopBombFuseSound();
+                    }
+                }
                 this.powerUps.splice(i, 1);
             }
         }
@@ -1114,12 +1288,31 @@ class TightropeGame {
     }
 
     updateBalanceRod() {
+        // 根据距离动态计算平衡杆伸缩速度（整体提升1.2倍）
+        let currentExtendSpeed;
+        if (this.distance < 500) {
+            // 0-500m：速度从2.04到2.4（1.7-2的1.2倍）
+            const progress = this.distance / 500;
+            currentExtendSpeed = (1.7 + progress * 0.3) * 1.2; // 从2.04增加到2.4
+        } else if (this.distance < 2000) {
+            // 500-2000m：速度从2.4到3.6（2-3的1.2倍）
+            const progress = (this.distance - 500) / (2000 - 500);
+            currentExtendSpeed = (2 + progress * 1) * 1.2; // 从2.4增加到3.6
+        } else if (this.distance < 2500) {
+            // 2000-2500m：速度从3.6到6（3-5的1.2倍）
+            const progress = (this.distance - 2000) / (2500 - 2000);
+            currentExtendSpeed = (3 + progress * 2) * 1.2; // 从3.6增加到6
+        } else {
+            // 2500m以上：保持速度6（5的1.2倍）
+            currentExtendSpeed = 5 * 1.2; // 6
+        }
+        
         if (this.keys['KeyZ'] || this.keys['KeyX']) {
             if (this.keys['KeyZ']) {
-                this.balanceRod.length = Math.min(this.balanceRod.maxLength, this.balanceRod.length + this.balanceRod.extendSpeed);
+                this.balanceRod.length = Math.min(this.balanceRod.maxLength, this.balanceRod.length + currentExtendSpeed);
             }
             if (this.keys['KeyX']) {
-                this.balanceRod.length = Math.max(this.balanceRod.minLength, this.balanceRod.length - this.balanceRod.extendSpeed);
+                this.balanceRod.length = Math.max(this.balanceRod.minLength, this.balanceRod.length - currentExtendSpeed);
             }
         }
     }
@@ -1176,7 +1369,7 @@ class TightropeGame {
         } while (attempts < maxAttempts);
         
         // 生成大小：初始大小的0.8倍到1.2倍
-        const baseScale = 0.1125; // 基础缩放
+        const baseScale = 0.08; // 基础缩放（减小）
         const scaleMultiplier = 0.8 + Math.random() * 0.4; // 0.8-1.2倍
         const finalScale = baseScale * scaleMultiplier;
         
@@ -1188,13 +1381,20 @@ class TightropeGame {
             dir: direction,
             scale: finalScale, // 随机缩放：0.8-1.2倍
             size: 60 + Math.random() * 120, // 保留size属性用于兼容性
-            spawnTime: Date.now() // 记录生成时间
+            spawnFrame: this.gameFrameCount, // 记录生成时的游戏帧数（用于时间计算，不受暂停影响）
+            currentAngle: 30 // 初始化当前角度为30度
         });
     }
 
 
     spawnPowerUp() {
-        const types = ['speed', 'balance', 'slow', 'unbalance', 'speed', 'slow', 'unbalance', 'explosion'];
+        // 调整道具概率：炸弹频率降低（约 1/12）
+        const types = [
+            'speed', 'balance', 'slow', 'unbalance',
+            'speed', 'slow', 'unbalance',
+            'speed', 'slow', 'balance', 'unbalance',
+            'explosion'
+        ];
         const type = types[Math.floor(Math.random() * types.length)];
         const tightropeX = this.balancePivot.x;
         const minDistance = this.balanceRod.minLength + 50; // 平衡杆最短+30像素
@@ -1203,9 +1403,12 @@ class TightropeGame {
         const distance = minDistance + Math.random() * (maxDistance - minDistance);
         const x = tightropeX + (side * distance);
         this.powerUps.push({ x, y: -50, type, size: 20, collected: false });
-        // 如果是炸弹道具，播放引线点燃的声音
+        // 如果是炸弹道具，增加计数，并在第一个炸弹出现时播放引线音效
         if (type === 'explosion') {
-            this.playBombFuseSound();
+            this.activeBombCount++;
+            if (this.activeBombCount === 1) {
+                this.playBombFuseSound();
+            }
         }
     }
 
@@ -1381,8 +1584,7 @@ class TightropeGame {
         }
         const activePowerUp = { type: powerUp.type, duration: powerUp.type === 'balance' ? 180 : 300, originalValue: null };
         if (powerUp.type === 'explosion') {
-            // 一旦发生碰撞，立即停止引线音效，并进入绝处逢生阶段
-            this.stopBombFuseSound();
+            // 一旦发生碰撞，进入绝处逢生阶段（引线音效是否停止由炸弹计数统一管理）
             this.triggerBombRescue();
             return;
         } else if (powerUp.type === 'speed') {
@@ -1398,7 +1600,7 @@ class TightropeGame {
         } else if (powerUp.type === 'slow') {
             this.speed -= 0.03; // 直接减少速度，支持叠加
         } else if (powerUp.type === 'unbalance') {
-            const unbalanceOffset = powerUp.x > this.tightrope.x ? 15 : -15;
+            const unbalanceOffset = powerUp.x > this.tightrope.x ? 20 : -20; // 改为一次性偏移20度
             this.player.sway += unbalanceOffset;
             if (this.hasActivePowerUp('unbalance')) { const existingUnbalance = this.activePowerUps.find(p => p.type === 'unbalance'); existingUnbalance.duration = 300; return; }
         }
@@ -1457,13 +1659,10 @@ class TightropeGame {
     // 炸弹引线音效：在炸弹出现时播放，使用 Bomb fuse.mp3，持续到炸弹通过主角
     playBombFuseSound() {
         try {
-            // 已经在播放则不重复创建
-            if (this.audio.bombFuse && !this.audio.bombFuse.paused) return;
-            const bombFuse = new Audio('../fuse.MP3');
-            bombFuse.loop = true;
-            bombFuse.volume = 0.6;
-            bombFuse.play().catch(() => {});
-            this.audio.bombFuse = bombFuse;
+            if (this.audio.bombFuse) {
+                this.audio.bombFuse.currentTime = 0;
+                this.audio.bombFuse.play().catch(() => {});
+            }
         } catch (e) {}
     }
 
@@ -1472,7 +1671,6 @@ class TightropeGame {
             if (this.audio.bombFuse) {
                 this.audio.bombFuse.pause();
                 this.audio.bombFuse.currentTime = 0;
-                this.audio.bombFuse = null;
             }
         } catch (e) {}
     }
@@ -1480,10 +1678,11 @@ class TightropeGame {
     // 炸弹爆炸音效：失败时播放 bomb.MP3
     playBombExplosionSound() {
         try {
-            const bombAudio = new Audio('../bomb.MP3');
-            bombAudio.volume = 0.6;
-            bombAudio.playbackRate = 1.0;
-            bombAudio.play().catch(() => {});
+            if (this.audio.bombExplosion) {
+                this.audio.bombExplosion.currentTime = 0;
+                this.audio.bombExplosion.playbackRate = 1.0;
+                this.audio.bombExplosion.play().catch(() => {});
+            }
         } catch (e) {}
     }
 
@@ -1492,6 +1691,8 @@ class TightropeGame {
         this.bombRescue.active = true;
         this.bombRescue.timer = 0;
         this.bombRescue.resolved = false;
+        // 记录接触炸弹时的角度
+        this.bombRescue.contactAngle = Math.abs(this.player.sway);
     }
 
     // 更新炸弹救援计时
@@ -1510,9 +1711,16 @@ class TightropeGame {
         this.bombRescue.resolved = true;
         this.bombRescue.active = false;
         this.bombRescue.timer = 0;
+        // 如果接触炸弹时角度超过40度，自动回归0度平衡状态
+        if (this.bombRescue.contactAngle > 40) {
+            this.player.sway = 0;
+            this.player.swaySpeed = 0;
+        }
         // 启动护罩动画，与金色文字同时出现、同时淡出
         this.bombRescueShield.active = true;
         this.bombRescueShield.timer = 0;
+        // 播放上扬的绝处逢生音乐
+        this.playBombRescueSuccessSound();
         this.showBombRescueSuccessEffect(); // 仅保留金色文字，不再有画布动画
     }
 
@@ -1526,13 +1734,14 @@ class TightropeGame {
         this.gameOver();
     }
 
-    // 绝处逢生视觉反馈
+    // 绝处逢生视觉反馈：金色文字，上浮+透明度降低，和吃到好道具动画一致，但整体上移200像素
     showBombRescueSuccessEffect() {
         const effectText = document.createElement('div');
         effectText.style.position = 'absolute';
         effectText.style.left = '50%';
-        effectText.style.top = '40%';
-        effectText.style.transform = 'translateX(-50%)';
+        effectText.style.top = '60%';
+        // 整体上移200像素（在原有动画基础上整体偏移）
+        effectText.style.transform = 'translateX(-50%) translateY(-150px)';
         // 金色大字“绝处逢生”
         effectText.style.color = '#FFD700';
         effectText.style.fontSize = '60px';
@@ -1543,14 +1752,39 @@ class TightropeGame {
         effectText.style.textShadow = '0 0 18px rgba(255,215,0,0.95)';
         effectText.textContent = '绝处逢生！';
         document.body.appendChild(effectText);
-        let opacity = 1; let y = 40;
+        let opacity = 1; let y = 60;
         const animate = () => {
-            opacity -= 0.02; y -= 0.4;
+            opacity -= 0.015; y -= 0.5;
             effectText.style.opacity = opacity;
             effectText.style.top = y + '%';
             if (opacity > 0) requestAnimationFrame(animate); else document.body.removeChild(effectText);
         };
         animate();
+    }
+
+    // 绝处逢生成功时的上扬音乐（Web Audio合成，避免加载额外文件）
+    playBombRescueSuccessSound() {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            const ctx = new AudioCtx();
+            const now = ctx.currentTime;
+            const notes = [880, 1174, 1568]; // A5-C#6-G6 上扬三音
+            notes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.frequency.value = freq;
+                osc.type = 'sine';
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                const start = now + i * 0.08;
+                const end = start + 0.25;
+                gain.gain.setValueAtTime(0.0, start);
+                gain.gain.linearRampToValueAtTime(0.25, start + 0.05);
+                gain.gain.linearRampToValueAtTime(0.0, end);
+                osc.start(start);
+                osc.stop(end + 0.02);
+            });
+        } catch (e) {}
     }
 
     // 绝处逢生护罩动画的更新
@@ -1604,10 +1838,12 @@ class TightropeGame {
     }
 
     initializeLandscape() {
-        // 初始也从中心生成若干个元素
-        for (let i = 0; i < 6; i++) {
-            this.spawnLandscapeElement();
-        }
+        // 初始化动态背景时，清空旧元素，分别在左右各生成一个，避免重叠
+        this.landscape = [];
+        this.leftSpawnTimer = 0;
+        this.rightSpawnTimer = 0;
+        this.spawnLandscapeElement('left');
+        this.spawnLandscapeElement('right');
     }
 
 
@@ -1635,6 +1871,8 @@ class TightropeGame {
 
     gameOver() {
         this.gameRunning = false;
+        // 确保任意死亡（包括角度过大）时，立即停止炸弹引线音效
+        this.stopBombFuseSound();
         const finalScore = Math.floor(this.distance);
         document.getElementById('finalDistance').textContent = finalScore;
         
@@ -1851,16 +2089,28 @@ class TightropeGame {
             const scale = element.scale || 0.05;
             const scaledWidth = imgWidth * scale;
             const scaledHeight = imgHeight * scale;
+            // 保存当前透明度设置
+            const oldAlpha = this.ctx.globalAlpha;
+            // 设置透明度（0.6表示60%不透明度，40%透明）
+            this.ctx.globalAlpha = 0.6;
             // 以元素中心为基准绘制图片，应用缩放
             this.ctx.drawImage(img, x - scaledWidth / 2, y - scaledHeight / 2, scaledWidth, scaledHeight);
+            // 恢复透明度设置
+            this.ctx.globalAlpha = oldAlpha;
         } else {
             // 备用：如果图片未加载，使用简单的圆形绘制
             const scale = element.scale || 0.05;
             const size = 30 * scale;
+            // 保存当前透明度设置
+            const oldAlpha = this.ctx.globalAlpha;
+            // 设置透明度
+            this.ctx.globalAlpha = 0.6;
             this.ctx.fillStyle = '#90EE90';
                 this.ctx.beginPath();
             this.ctx.arc(x, y, size, 0, Math.PI * 2);
                 this.ctx.fill();
+            // 恢复透明度设置
+            this.ctx.globalAlpha = oldAlpha;
         }
     }
 

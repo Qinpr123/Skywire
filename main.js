@@ -45,11 +45,24 @@ class TightropeGame {
         this.distance = 0;
         this.speed = 0.083;
         this.score = 0;
-        // 垂死挣扎机制
+        // 垂死挣扎机制（倾斜边界）
         this.dangerZoneTimer = 0; // 进入危险区域的时间（帧数）
         this.dangerZoneDuration = 180; // 垂死挣扎时间：3秒（60fps * 3）
         this.dangerThreshold = 60; // 危险阈值：60度
         this.deathThreshold = 75; // 死亡阈值：75度（冗余范围15度）
+        // 炸弹绝处逢生机制（无保护罩，仅一次逃生机会）
+        this.bombRescue = {
+            active: false,   // 是否处于Q键救援阶段
+            timer: 0,        // 已经过的帧数
+            duration: 90,    // 救援持续时间：1.5秒（60fps * 1.5）
+            resolved: false  // 是否已经处理（成功或失败）
+        };
+        // 绝处逢生成功后的护罩动画状态（与金色文字同步淡出）
+        this.bombRescueShield = {
+            active: false,
+            timer: 0,
+            duration: 60 // 约1秒
+        };
         // 多用户存档系统
         this.currentUser = null;
         this.users = this.loadUsers();
@@ -115,6 +128,7 @@ class TightropeGame {
         this.audio = {
             bgMusic: null,
             failSound: null, // 失败音效
+            bombFuse: null,  // 炸弹引线音效
             loaded: 0,
             ready: false
         };
@@ -670,6 +684,12 @@ class TightropeGame {
     setupEventListeners() {
         document.addEventListener('keydown', (e) => {
             this.keys[e.code] = true;
+            // 炸弹救援阶段按下 Q 触发绝处逃生
+            if (this.bombRescue.active && !this.bombRescue.resolved && e.code === 'KeyQ') {
+                e.preventDefault();
+                this.handleBombRescueSuccess();
+                return;
+            }
             if (e.code === 'Space') {
                 e.preventDefault(); // 防止页面滚动
                 if (!this.gameRunning) {
@@ -776,8 +796,13 @@ class TightropeGame {
         this.powerUpSpawnTimer = 0;
         this.activePowerUps = [];
         this.balanceRod.length = this.balanceRod.baseLength ? this.balanceRod.baseLength * 0.78 : 60;
-        // 重置垂死挣扎计时器
+        // 重置垂死挣扎/炸弹救援状态
         this.dangerZoneTimer = 0;
+        this.bombRescue.active = false;
+        this.bombRescue.timer = 0;
+        this.bombRescue.resolved = false;
+        this.bombRescueShield.active = false;
+        this.bombRescueShield.timer = 0;
         // 重新加载当前用户的最高分
         if (this.currentUser) {
             const user = this.users.find(u => u.name === this.currentUser);
@@ -803,17 +828,24 @@ class TightropeGame {
 
     update() {
         if (!this.gameRunning || this.gamePaused) return;
-        this.distance += this.speed;
-        this.score = Math.floor(this.distance);
-        this.updateWind();
-        this.updatePlayerBalance();
-        this.updatePlayerAnimation();
-        this.updateBackground();
-        this.updateParticles();
-        this.updateLandscape();
-        this.updatePowerUps();
-        this.updateBalanceRod();
-        this.checkGameOver();
+        // 如果处于炸弹Q键救援阶段，只更新救援逻辑，其余全部暂停
+        if (this.bombRescue.active) {
+            this.updateBombRescue();
+        } else {
+            this.distance += this.speed;
+            this.score = Math.floor(this.distance);
+            this.updateWind();
+            this.updatePlayerBalance();
+            this.updatePlayerAnimation();
+            this.updateBackground();
+            this.updateParticles();
+            this.updateLandscape();
+            this.updatePowerUps();
+            this.updateBalanceRod();
+            this.checkGameOver();
+        }
+        // 绝处逢生护罩动画独立更新（不阻塞游戏）
+        this.updateBombRescueShield();
         this.updateUI();
     }
 
@@ -1060,6 +1092,10 @@ class TightropeGame {
         for (let i = this.powerUps.length - 1; i >= 0; i--) {
             const powerUp = this.powerUps[i];
             powerUp.y += 7;
+            // 炸弹经过主角位置之后，停止引线音效（不会再被接到）
+            if (powerUp.type === 'explosion' && powerUp.y > this.balancePivot.y + 50) {
+                this.stopBombFuseSound();
+            }
             if (this.checkPowerUpCollision(powerUp)) {
                 this.collectPowerUp(powerUp);
                 this.powerUps.splice(i, 1);
@@ -1167,6 +1203,10 @@ class TightropeGame {
         const distance = minDistance + Math.random() * (maxDistance - minDistance);
         const x = tightropeX + (side * distance);
         this.powerUps.push({ x, y: -50, type, size: 20, collected: false });
+        // 如果是炸弹道具，播放引线点燃的声音
+        if (type === 'explosion') {
+            this.playBombFuseSound();
+        }
     }
 
     checkPowerUpCollision(powerUp) {
@@ -1331,14 +1371,19 @@ class TightropeGame {
     }
 
     collectPowerUp(powerUp) {
-        this.playSound(powerUp.type);
-        this.showPowerUpEffect(powerUp);
+        // 炸弹走单独流程：不播放合成音、不显示“爆炸!”文字
+        if (powerUp.type !== 'explosion') {
+            this.playSound(powerUp.type);
+            this.showPowerUpEffect(powerUp);
+        }
         if (this.hasActivePowerUp('balance') && (powerUp.type === 'unbalance' || powerUp.type === 'slow')) {
             this.clearBalanceEffect();
         }
         const activePowerUp = { type: powerUp.type, duration: powerUp.type === 'balance' ? 180 : 300, originalValue: null };
         if (powerUp.type === 'explosion') {
-            this.gameOver();
+            // 一旦发生碰撞，立即停止引线音效，并进入绝处逢生阶段
+            this.stopBombFuseSound();
+            this.triggerBombRescue();
             return;
         } else if (powerUp.type === 'speed') {
             this.speed += 0.05; // 直接增加速度，支持叠加
@@ -1408,6 +1453,115 @@ class TightropeGame {
             oscillator.stop(audioContext.currentTime + 0.5);
         } catch (e) {}
     }
+
+    // 炸弹引线音效：在炸弹出现时播放，使用 Bomb fuse.mp3，持续到炸弹通过主角
+    playBombFuseSound() {
+        try {
+            // 已经在播放则不重复创建
+            if (this.audio.bombFuse && !this.audio.bombFuse.paused) return;
+            const bombFuse = new Audio('../fuse.MP3');
+            bombFuse.loop = true;
+            bombFuse.volume = 0.6;
+            bombFuse.play().catch(() => {});
+            this.audio.bombFuse = bombFuse;
+        } catch (e) {}
+    }
+
+    stopBombFuseSound() {
+        try {
+            if (this.audio.bombFuse) {
+                this.audio.bombFuse.pause();
+                this.audio.bombFuse.currentTime = 0;
+                this.audio.bombFuse = null;
+            }
+        } catch (e) {}
+    }
+
+    // 炸弹爆炸音效：失败时播放 bomb.MP3
+    playBombExplosionSound() {
+        try {
+            const bombAudio = new Audio('../bomb.MP3');
+            bombAudio.volume = 0.6;
+            bombAudio.playbackRate = 1.0;
+            bombAudio.play().catch(() => {});
+        } catch (e) {}
+    }
+
+    // 触发炸弹Q键救援阶段
+    triggerBombRescue() {
+        this.bombRescue.active = true;
+        this.bombRescue.timer = 0;
+        this.bombRescue.resolved = false;
+    }
+
+    // 更新炸弹救援计时
+    updateBombRescue() {
+        if (!this.bombRescue.active) return;
+        this.bombRescue.timer++;
+        if (this.bombRescue.timer >= this.bombRescue.duration && !this.bombRescue.resolved) {
+            // 超时且未成功，判定失败
+            this.handleBombRescueFail();
+        }
+    }
+
+    // 炸弹救援成功：绝处逢生一次，继续游戏（无保护罩）
+    handleBombRescueSuccess() {
+        if (!this.bombRescue.active || this.bombRescue.resolved) return;
+        this.bombRescue.resolved = true;
+        this.bombRescue.active = false;
+        this.bombRescue.timer = 0;
+        // 启动护罩动画，与金色文字同时出现、同时淡出
+        this.bombRescueShield.active = true;
+        this.bombRescueShield.timer = 0;
+        this.showBombRescueSuccessEffect(); // 仅保留金色文字，不再有画布动画
+    }
+
+    // 炸弹救援失败：播放爆炸音效并结束游戏
+    handleBombRescueFail() {
+        if (!this.bombRescue.active || this.bombRescue.resolved) return;
+        this.bombRescue.resolved = true;
+        this.bombRescue.active = false;
+        this.bombRescue.timer = 0;
+        this.playBombExplosionSound();
+        this.gameOver();
+    }
+
+    // 绝处逢生视觉反馈
+    showBombRescueSuccessEffect() {
+        const effectText = document.createElement('div');
+        effectText.style.position = 'absolute';
+        effectText.style.left = '50%';
+        effectText.style.top = '40%';
+        effectText.style.transform = 'translateX(-50%)';
+        // 金色大字“绝处逢生”
+        effectText.style.color = '#FFD700';
+        effectText.style.fontSize = '60px';
+        effectText.style.fontWeight = 'bold';
+        effectText.style.pointerEvents = 'none';
+        effectText.style.zIndex = '1200';
+        effectText.style.textAlign = 'center';
+        effectText.style.textShadow = '0 0 18px rgba(255,215,0,0.95)';
+        effectText.textContent = '绝处逢生！';
+        document.body.appendChild(effectText);
+        let opacity = 1; let y = 40;
+        const animate = () => {
+            opacity -= 0.02; y -= 0.4;
+            effectText.style.opacity = opacity;
+            effectText.style.top = y + '%';
+            if (opacity > 0) requestAnimationFrame(animate); else document.body.removeChild(effectText);
+        };
+        animate();
+    }
+
+    // 绝处逢生护罩动画的更新
+    updateBombRescueShield() {
+        if (!this.bombRescueShield.active) return;
+        this.bombRescueShield.timer++;
+        if (this.bombRescueShield.timer >= this.bombRescueShield.duration) {
+            this.bombRescueShield.active = false;
+        }
+    }
+
 
     showPowerUpEffect(powerUp) {
         const effectText = document.createElement('div');
@@ -1628,12 +1782,19 @@ class TightropeGame {
 
     render() {
         this.ctx.clearRect(0, 0, this.width, this.height);
+        // 炸弹救援阶段画面变为黑白，结束后恢复彩色
+        if (this.bombRescue.active) {
+            this.canvas.style.filter = 'grayscale(1)';
+        } else {
+            this.canvas.style.filter = '';
+        }
         this.drawBackground();
         this.drawDangerLines(); // 绘制危险边界线
         this.drawPlayer();
         this.drawWindIndicator();
         this.drawParticles();
         this.drawPowerUps();
+        this.drawBombRescueOverlay(); // 炸弹救援提示与时间条
     }
 
     drawBackground() {
@@ -1708,6 +1869,70 @@ class TightropeGame {
         this.ctx.lineWidth = this.tightrope.thickness;
         this.ctx.beginPath(); this.ctx.moveTo(this.tightrope.x, 0); this.ctx.lineTo(this.tightrope.x, this.height); this.ctx.stroke();
     }
+
+    // 炸弹Q键救援阶段的UI：Q提示与时间条
+    drawBombRescueOverlay() {
+        if (!this.bombRescue.active) return;
+        const progress = Math.max(0, Math.min(1, 1 - this.bombRescue.timer / this.bombRescue.duration));
+        const centerX = this.width / 2;
+        const centerY = this.height / 2 - 80;
+
+        this.ctx.save();
+        // 半透明遮罩
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+
+        // 圆形按键外圈（时间条，单色）
+        const outerRadius = 90;
+        const innerRadius = 60;
+        // 背景圆圈
+        this.ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        this.ctx.lineWidth = 10;
+        this.ctx.beginPath();
+        this.ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
+        this.ctx.stroke();
+        // 剩余时间圆弧（从顶部顺时针减少）
+        const startAngle = -Math.PI / 2;
+        const endAngle = startAngle + Math.PI * 2 * progress;
+        this.ctx.strokeStyle = '#FFFFFF';
+        this.ctx.lineWidth = 10;
+        this.ctx.beginPath();
+        this.ctx.arc(centerX, centerY, outerRadius, startAngle, endAngle);
+        this.ctx.stroke();
+
+        // 圆形Q按键
+        this.ctx.fillStyle = 'rgba(30,30,30,0.9)';
+        this.ctx.beginPath();
+        this.ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#FFFFFF';
+        this.ctx.lineWidth = 4;
+        this.ctx.stroke();
+
+        // Q 字样
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.font = 'bold 64px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('Q', centerX, centerY + 2);
+
+        // 左右文字：“按”  “绝处逃生”
+        this.ctx.font = 'bold 32px Arial';
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.textAlign = 'right';
+        this.ctx.fillText('按', centerX - innerRadius - 40, centerY);
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('绝处逃生', centerX + innerRadius + 40, centerY);
+
+        // 剩余时间数字显示在下方
+        const remainingSeconds = (this.bombRescue.duration - this.bombRescue.timer) / 60;
+        this.ctx.textAlign = 'center';
+        this.ctx.font = 'bold 26px Arial';
+        this.ctx.fillText(remainingSeconds.toFixed(1) + 's', centerX, centerY + outerRadius + 30);
+
+        this.ctx.restore();
+    }
+
 
     drawDangerLines() {
         // 绘制60度危险边界虚线
@@ -1851,6 +2076,33 @@ class TightropeGame {
             const drawY = this.height - this.balancePivot.y - ih;
             this.ctx.fillStyle = '#FF6B6B';
             this.ctx.fillRect(-iw / 2, drawY, iw, ih);
+            this.ctx.restore();
+        }
+
+        // 3) 绝处逢生后的金色半透明保护罩动画（以旋转点为圆心，固定半径400像素的上半圆）
+        if (this.bombRescueShield.active) {
+            const radius = 400;
+            // 以旋转点（balancePivot）为圆心
+            const centerX = this.balancePivot.x;
+            const centerY = this.balancePivot.y;
+
+            // 根据时间做轻微的呼吸闪烁
+            const t = this.bombRescueShield.timer / this.bombRescueShield.duration;
+            const alpha = 0.45 * (1 - t);
+
+            this.ctx.save();
+            this.ctx.fillStyle = `rgba(255, 215, 0, ${alpha * 0.6})`;
+            this.ctx.strokeStyle = `rgba(255, 230, 150, ${alpha})`;
+            this.ctx.lineWidth = 3;
+            this.ctx.shadowColor = `rgba(255, 215, 0, ${alpha})`;
+            this.ctx.shadowBlur = 25;
+            this.ctx.beginPath();
+            // 以旋转点为圆心，只绘制上半圆护罩
+            this.ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI, false);
+            this.ctx.lineTo(centerX, centerY);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.stroke();
             this.ctx.restore();
         }
 

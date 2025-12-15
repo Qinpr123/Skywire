@@ -45,6 +45,11 @@ class TightropeGame {
         this.distance = 0;
         this.speed = 0.083;
         this.score = 0;
+        // 垂死挣扎机制
+        this.dangerZoneTimer = 0; // 进入危险区域的时间（帧数）
+        this.dangerZoneDuration = 180; // 垂死挣扎时间：3秒（60fps * 3）
+        this.dangerThreshold = 60; // 危险阈值：60度
+        this.deathThreshold = 75; // 死亡阈值：75度（冗余范围15度）
         // 多用户存档系统
         this.currentUser = null;
         this.users = this.loadUsers();
@@ -673,7 +678,7 @@ class TightropeGame {
                         this.showUserSelection();
                         return;
                     }
-                    this.startGame();
+                this.startGame();
                 } else {
                     this.togglePause();
                 }
@@ -771,6 +776,8 @@ class TightropeGame {
         this.powerUpSpawnTimer = 0;
         this.activePowerUps = [];
         this.balanceRod.length = this.balanceRod.baseLength ? this.balanceRod.baseLength * 0.78 : 60;
+        // 重置垂死挣扎计时器
+        this.dangerZoneTimer = 0;
         // 重新加载当前用户的最高分
         if (this.currentUser) {
             const user = this.users.find(u => u.name === this.currentUser);
@@ -1451,7 +1458,25 @@ class TightropeGame {
 
 
     checkGameOver() {
-        if (Math.abs(this.player.sway) >= 60) this.gameOver();
+        const absSway = Math.abs(this.player.sway);
+        
+        // 如果超过死亡阈值，立即死亡
+        if (absSway >= this.deathThreshold) {
+            this.gameOver();
+            return;
+        }
+        
+        // 如果超过危险阈值，开始计时
+        if (absSway >= this.dangerThreshold) {
+            this.dangerZoneTimer++;
+            // 如果超过垂死挣扎时间，游戏结束
+            if (this.dangerZoneTimer >= this.dangerZoneDuration) {
+                this.gameOver();
+            }
+        } else {
+            // 如果回到安全区域，重置计时器
+            this.dangerZoneTimer = 0;
+        }
     }
 
     gameOver() {
@@ -1604,6 +1629,7 @@ class TightropeGame {
     render() {
         this.ctx.clearRect(0, 0, this.width, this.height);
         this.drawBackground();
+        this.drawDangerLines(); // 绘制危险边界线
         this.drawPlayer();
         this.drawWindIndicator();
         this.drawParticles();
@@ -1681,6 +1707,111 @@ class TightropeGame {
         this.ctx.strokeStyle = '#8B4513';
         this.ctx.lineWidth = this.tightrope.thickness;
         this.ctx.beginPath(); this.ctx.moveTo(this.tightrope.x, 0); this.ctx.lineTo(this.tightrope.x, this.height); this.ctx.stroke();
+    }
+
+    drawDangerLines() {
+        // 绘制60度危险边界虚线
+        const pivotX = this.balancePivot.x;
+        const pivotY = this.balancePivot.y;
+        const absSway = Math.abs(this.player.sway);
+        
+        // 计算危险程度：0（安全）到1（极度危险）
+        let dangerLevel = 0;
+        if (absSway >= this.dangerThreshold) {
+            // 超过60度后，根据角度和剩余时间计算危险程度
+            const angleDanger = Math.min((absSway - this.dangerThreshold) / (this.deathThreshold - this.dangerThreshold), 1);
+            const timeDanger = this.dangerZoneTimer / this.dangerZoneDuration;
+            dangerLevel = Math.max(angleDanger, timeDanger);
+        } else if (absSway >= 45) {
+            // 45-60度之间，逐渐变红
+            dangerLevel = (absSway - 45) / (this.dangerThreshold - 45);
+        }
+        
+        // 根据危险程度设置颜色：白色 -> 黄色 -> 红色 -> 深红色
+        let lineColor;
+        if (dangerLevel < 0.3) {
+            lineColor = '#FFFFFF'; // 白色
+        } else if (dangerLevel < 0.6) {
+            // 白色到黄色渐变
+            const t = (dangerLevel - 0.3) / 0.3;
+            lineColor = `rgb(255, ${255 - Math.floor(t * 100)}, 0)`;
+        } else if (dangerLevel < 0.9) {
+            // 黄色到红色渐变
+            const t = (dangerLevel - 0.6) / 0.3;
+            lineColor = `rgb(255, ${155 - Math.floor(t * 155)}, 0)`;
+        } else {
+            // 红色到深红色
+            const t = (dangerLevel - 0.9) / 0.1;
+            lineColor = `rgb(${255 - Math.floor(t * 100)}, 0, 0)`;
+        }
+        
+        // 虚线样式
+        const dashLength = 10;
+        const dashGap = 5;
+        const lineLength = 400; // 虚线长度
+        
+        this.ctx.save();
+        this.ctx.strokeStyle = lineColor;
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([dashLength, dashGap]);
+        
+        // 绘制左侧60度边界线
+        this.ctx.save();
+        this.ctx.translate(pivotX, pivotY);
+        this.ctx.rotate(-60 * Math.PI / 180);
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(0, -lineLength);
+        this.ctx.stroke();
+        this.ctx.restore();
+        
+        // 绘制右侧60度边界线
+        this.ctx.save();
+        this.ctx.translate(pivotX, pivotY);
+        this.ctx.rotate(60 * Math.PI / 180);
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(0, -lineLength);
+        this.ctx.stroke();
+        this.ctx.restore();
+        
+        // 如果进入危险区域，绘制警告效果
+        if (absSway >= this.dangerThreshold) {
+            const remainingTime = (this.dangerZoneDuration - this.dangerZoneTimer) / 60; // 剩余秒数
+            const alpha = 0.3 + 0.3 * Math.sin(Date.now() / 100); // 闪烁效果
+            
+            // 绘制半透明警告区域
+            this.ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
+            this.ctx.globalAlpha = alpha;
+            this.ctx.beginPath();
+            this.ctx.moveTo(pivotX, pivotY);
+            this.ctx.lineTo(
+                pivotX + Math.sin(-60 * Math.PI / 180) * lineLength,
+                pivotY - Math.cos(-60 * Math.PI / 180) * lineLength
+            );
+            this.ctx.lineTo(
+                pivotX + Math.sin(60 * Math.PI / 180) * lineLength,
+                pivotY - Math.cos(60 * Math.PI / 180) * lineLength
+            );
+            this.ctx.closePath();
+            this.ctx.fill();
+            
+            // 显示剩余时间（如果剩余时间少于2秒）
+            if (remainingTime < 2) {
+                this.ctx.globalAlpha = 1;
+                this.ctx.fillStyle = '#FF0000';
+                this.ctx.font = 'bold 48px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(
+                    remainingTime.toFixed(1) + 's',
+                    pivotX,
+                    pivotY - 100
+                );
+            }
+        }
+        
+        this.ctx.restore();
     }
 
     drawPlayer() {

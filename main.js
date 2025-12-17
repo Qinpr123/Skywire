@@ -43,7 +43,7 @@ class TightropeGame {
         this.gameRunning = false;
         this.gamePaused = false;
         this.distance = 0;
-        this.speed = 0.083;
+        this.speed = 0.1; // 提升初始速度（从0.083提升到0.1）
         this.score = 0;
         this.gameFrameCount = 0; // 游戏帧计数器（只在游戏运行时增加，用于landscape时间计算）
         // 垂死挣扎机制（倾斜边界）
@@ -53,11 +53,12 @@ class TightropeGame {
         this.deathThreshold = 75; // 死亡阈值：75度（冗余范围15度）
         // 炸弹绝处逢生机制（无保护罩，仅一次逃生机会）
         this.bombRescue = {
-            active: false,   // 是否处于Q键救援阶段
+            active: false,   // 是否处于救援阶段
             timer: 0,        // 已经过的帧数
             duration: 108,   // 救援持续时间：1.8秒（60fps * 1.8）
             resolved: false,  // 是否已经处理（成功或失败）
-            contactAngle: 0  // 接触炸弹时的角度
+            contactAngle: 0,  // 接触炸弹时的角度
+            rescueKey: 'KeyQ' // 随机救援按键
         };
         // 绝处逢生成功后的护罩动画状态（与金色文字同步淡出）
         this.bombRescueShield = {
@@ -725,8 +726,8 @@ class TightropeGame {
     setupEventListeners() {
         document.addEventListener('keydown', (e) => {
             this.keys[e.code] = true;
-            // 炸弹救援阶段按下 Q 触发绝处逃生
-            if (this.bombRescue.active && !this.bombRescue.resolved && e.code === 'KeyQ') {
+            // 炸弹救援阶段按下随机按键触发绝处逃生
+            if (this.bombRescue.active && !this.bombRescue.resolved && e.code === this.bombRescue.rescueKey) {
                 e.preventDefault();
                 this.handleBombRescueSuccess();
                 return;
@@ -827,7 +828,7 @@ class TightropeGame {
     resetGame() {
         this.distance = 0;
         this.score = 0;
-        this.speed = 0.083; // 重置速度为初始值
+        this.speed = 0.1; // 重置速度为初始值（从0.083提升到0.1）
         this.gameFrameCount = 0; // 重置游戏帧计数器
         this.player.x = this.balancePivot.x;
         this.player.y = this.balancePivot.y;
@@ -849,6 +850,7 @@ class TightropeGame {
         this.bombRescue.timer = 0;
         this.bombRescue.resolved = false;
         this.bombRescue.contactAngle = 0;
+        this.bombRescue.rescueKey = 'KeyQ'; // 重置为默认值
         this.bombRescueShield.active = false;
         this.bombRescueShield.timer = 0;
         // 重置炸弹计数并停止引线音效
@@ -1011,9 +1013,9 @@ class TightropeGame {
             gravityEffect = (this.player.sway > 0 ? 1 : -1) * baseGravityForce * gravityStrength * rodLengthGravityReduction;
         }
         
-        // 控制力：杆短时响应更快，杆长时响应稍慢
+        // 控制力：杆短时响应更快，杆长时响应稍慢（整体提升2倍）
         // 当重力影响增大时，按键对抗作用也增强（与重力强度成正比）
-        const baseControlMultiplier = 0.025 + flexibilityFactor * 0.035; // 0.025（杆长）到0.06（杆短）
+        const baseControlMultiplier = (0.025 + flexibilityFactor * 0.035) * 2; // 0.05（杆长）到0.12（杆短）
         // 根据角度增强按键控制力
         let controlEnhancement;
         if (absSway <= 15) {
@@ -1118,7 +1120,7 @@ class TightropeGame {
         }
         
         // 固定基础速度，不受道具影响（视觉轨迹恒定）
-        const fixedBaseSpeed = 0.083;
+        const fixedBaseSpeed = 0.1; // 提升初始速度（从0.083提升到0.1）
         // 仅用于控制平移速度的缩放系数（不影响缩放和角度）
         let moveSpeedScale = 1.0;
         for (let powerUp of this.activePowerUps) {
@@ -1229,30 +1231,30 @@ class TightropeGame {
         if (this.powerUpSpawnTimer >= this.powerUpSpawnInterval) {
             this.spawnPowerUp();
             this.powerUpSpawnTimer = 0;
-            // 道具生成间隔：开局密度减半，随着距离逐渐恢复到原始密度，500米后进一步增加难度
+            // 道具生成间隔：开局密度减半，随着距离逐渐恢复到原始密度，250米后进一步增加难度
             const baseInterval = 60 + Math.random() * 60; // 原始：60-120 帧
             let densityFactor;
-            if (this.distance < 500) {
-                // 0-500米：从2逐渐减到1
-                densityFactor = 2 - (this.distance / 500);
+            if (this.distance < 250) {
+                // 0-250米：从2逐渐减到1
+                densityFactor = 2 - (this.distance / 250);
             } else {
-                // 500米后：继续减少，最低到0.4（更高密度）
-                const progress = Math.min((this.distance - 500) / 2000, 1); // 500-2500米之间
+                // 250米后：继续减少，最低到0.4（更高密度）
+                const progress = Math.min((this.distance - 250) / 2250, 1); // 250-2500米之间
                 densityFactor = 1 - progress * 0.6; // 从1减少到0.4
             }
             this.powerUpSpawnInterval = baseInterval * densityFactor;
         }
         for (let i = this.powerUps.length - 1; i >= 0; i--) {
             const powerUp = this.powerUps[i];
-            // 道具下落速度：前期减半，随着行进距离逐渐加快，500米后进一步加速
-            const baseFallSpeed = 3.5; // 原来7的一半
+            // 道具下落速度：前期减半，随着行进距离逐渐加快，250米后进一步加速
+            const baseFallSpeed = 4.5; // 提升初始下落速度（从3.5提升到4.5）
             let speedFactor;
-            if (this.distance < 500) {
-                // 0-500米：从1逐渐增加到2
-                speedFactor = 1 + (this.distance / 500);
+            if (this.distance < 250) {
+                // 0-250米：从1.2逐渐增加到2（提升初始速度因子）
+                speedFactor = 1.2 + (this.distance / 250) * 0.8;
             } else {
-                // 500米后：继续加速，最高到2.5倍（更快下落）
-                const progress = Math.min((this.distance - 500) / 2000, 1); // 500-2500米之间
+                // 250米后：继续加速，最高到2.5倍（更快下落）
+                const progress = Math.min((this.distance - 250) / 2250, 1); // 250-2500米之间
                 speedFactor = 2 + progress * 0.5; // 从2增加到2.5
             }
             powerUp.y += baseFallSpeed * speedFactor;
@@ -1291,20 +1293,20 @@ class TightropeGame {
         // 根据距离动态计算平衡杆伸缩速度（整体提升1.2倍）
         let currentExtendSpeed;
         if (this.distance < 500) {
-            // 0-500m：速度从2.04到2.4（1.7-2的1.2倍）
+            // 0-500m：速度从1.7到2（提升1.2倍）
             const progress = this.distance / 500;
             currentExtendSpeed = (1.7 + progress * 0.3) * 1.2; // 从2.04增加到2.4
         } else if (this.distance < 2000) {
-            // 500-2000m：速度从2.4到3.6（2-3的1.2倍）
+            // 500-2000m：速度从2到3（提升1.2倍）
             const progress = (this.distance - 500) / (2000 - 500);
             currentExtendSpeed = (2 + progress * 1) * 1.2; // 从2.4增加到3.6
         } else if (this.distance < 2500) {
-            // 2000-2500m：速度从3.6到6（3-5的1.2倍）
+            // 2000-2500m：速度从3到5（提升1.2倍后继续增加到8）
             const progress = (this.distance - 2000) / (2500 - 2000);
-            currentExtendSpeed = (3 + progress * 2) * 1.2; // 从3.6增加到6
+            currentExtendSpeed = 3.6 + progress * 4.4; // 从3.6增加到8
         } else {
-            // 2500m以上：保持速度6（5的1.2倍）
-            currentExtendSpeed = 5 * 1.2; // 6
+            // 2500m以上：保持速度8（从6提升到8）
+            currentExtendSpeed = 8;
         }
         
         if (this.keys['KeyZ'] || this.keys['KeyX']) {
@@ -1693,6 +1695,9 @@ class TightropeGame {
         this.bombRescue.resolved = false;
         // 记录接触炸弹时的角度
         this.bombRescue.contactAngle = Math.abs(this.player.sway);
+        // 随机选择救援按键：Q、W、E、A、S、D
+        const rescueKeys = ['KeyQ', 'KeyW', 'KeyE', 'KeyA', 'KeyS', 'KeyD'];
+        this.bombRescue.rescueKey = rescueKeys[Math.floor(Math.random() * rescueKeys.length)];
     }
 
     // 更新炸弹救援计时
@@ -1742,14 +1747,21 @@ class TightropeGame {
         effectText.style.top = '60%';
         // 整体上移200像素（在原有动画基础上整体偏移）
         effectText.style.transform = 'translateX(-50%) translateY(-150px)';
-        // 金色大字“绝处逢生”
+        // 金色大字"绝处逢生"（响应式设计）
         effectText.style.color = '#FFD700';
-        effectText.style.fontSize = '60px';
+        // 根据视口宽度计算字体大小：基础60px，按视口宽度缩放
+        const baseFontSize = 60;
+        const viewportWidth = window.innerWidth;
+        const scaleFactor = Math.min(viewportWidth / 1920, 1.5); // 以1920px为基准，最大1.5倍
+        const fontSize = Math.max(baseFontSize * scaleFactor, baseFontSize * 0.6); // 最小为基准的60%
+        effectText.style.fontSize = fontSize + 'px';
         effectText.style.fontWeight = 'bold';
         effectText.style.pointerEvents = 'none';
         effectText.style.zIndex = '1200';
         effectText.style.textAlign = 'center';
-        effectText.style.textShadow = '0 0 18px rgba(255,215,0,0.95)';
+        // 文字阴影也根据字体大小缩放
+        const shadowBlur = 18 * (fontSize / baseFontSize);
+        effectText.style.textShadow = `0 0 ${shadowBlur}px rgba(255,215,0,0.95)`;
         effectText.textContent = '绝处逢生！';
         document.body.appendChild(effectText);
         let opacity = 1; let y = 60;
@@ -1804,12 +1816,20 @@ class TightropeGame {
         effectText.style.top = '60%';
         effectText.style.transform = 'translateX(-50%)';
         effectText.style.color = this.getPowerUpColor(powerUp.type);
-        effectText.style.fontSize = '40px';
+        // 响应式设计：根据视口宽度计算字体大小
+        const baseFontSize = 40;
+        const viewportWidth = window.innerWidth;
+        const scaleFactor = Math.min(viewportWidth / 1920, 1.5); // 以1920px为基准，最大1.5倍
+        const fontSize = Math.max(baseFontSize * scaleFactor, baseFontSize * 0.6); // 最小为基准的60%
+        effectText.style.fontSize = fontSize + 'px';
         effectText.style.fontWeight = 'bold';
         effectText.style.pointerEvents = 'none';
         effectText.style.zIndex = '1000';
         effectText.style.textAlign = 'center';
-        effectText.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+        // 文字阴影也根据字体大小缩放
+        const shadowOffset = 2 * (fontSize / baseFontSize);
+        const shadowBlur = 4 * (fontSize / baseFontSize);
+        effectText.style.textShadow = `${shadowOffset}px ${shadowOffset}px ${shadowBlur}px rgba(0,0,0,0.8)`;
         effectText.textContent = this.getPowerUpText(powerUp.type);
         document.body.appendChild(effectText);
         let opacity = 1; let y = 60;
@@ -2159,12 +2179,13 @@ class TightropeGame {
         this.ctx.lineWidth = 4;
         this.ctx.stroke();
 
-        // Q 字样
+        // 显示随机救援按键字样
+        const keyName = this.bombRescue.rescueKey.replace('Key', ''); // 从KeyQ提取Q
         this.ctx.fillStyle = '#FFFFFF';
         this.ctx.font = 'bold 64px Arial';
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
-        this.ctx.fillText('Q', centerX, centerY + 2);
+        this.ctx.fillText(keyName, centerX, centerY + 2);
 
         // 左右文字：“按”  “绝处逃生”
         this.ctx.font = 'bold 32px Arial';

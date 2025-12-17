@@ -59,6 +59,10 @@
                     <span class="desc">缩短平衡杆</span>
                 </div>
                 <div class="instruction-item">
+                    <span class="key">C</span>
+                    <span class="desc">激光射击</span>
+                </div>
+                <div class="instruction-item">
                     <span class="key">空格</span>
                     <span class="desc">开始/暂停</span>
                 </div>
@@ -88,9 +92,19 @@
         <div id="gameOver">
             <h2 id="gameOverTitle">游戏结束！</h2>
             <p id="gameOverMessage">你走了 <span id="finalDistance">0</span> 米</p>
+            
+            <!-- 排行榜区域 -->
+            <div class="game-over-leaderboard">
+                <h3 class="leaderboard-title">🏆 排行榜</h3>
+                <div id="gameOverLeaderboardList" class="leaderboard-list"></div>
+            </div>
+            
             <div class="restart-prompt">
-                <p>按空格键重新挑战</p>
-                <button id="switchUserBtn" style="margin-top: 15px; padding: 10px 20px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 8px; color: white; cursor: pointer; font-size: 0.9em;">切换玩家</button>
+                <button id="restartBtn" class="game-over-btn restart-btn">按空格键重新挑战</button>
+                <button id="switchUserBtn" class="game-over-btn switch-btn">
+                    <span>切换</span>
+                    <span>玩家</span>
+                </button>
             </div>
         </div>
         

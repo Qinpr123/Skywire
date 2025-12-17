@@ -58,7 +58,7 @@ class TightropeGame {
             duration: 108,   // 救援持续时间：1.8秒（60fps * 1.8）
             resolved: false,  // 是否已经处理（成功或失败）
             contactAngle: 0,  // 接触炸弹时的角度
-            rescueKey: 'KeyQ' // 随机救援按键
+            rescueKey: 'KeyQ' // 当前救援按键（从 Q/W/E/A/S/D 中随机）
         };
         // 绝处逢生成功后的护罩动画状态（与金色文字同步淡出）
         this.bombRescueShield = {
@@ -100,6 +100,16 @@ class TightropeGame {
         this.maxWindSwaySpeedPerSecond = 30; // 风力影响每秒最大偏转30度
         this.maxControlSwaySpeedPerSecond = 45; // 按键影响每秒最大偏转45度
 
+        // 生命系统（机械鸟攻击）
+        this.playerMaxHealth = 3;
+        this.playerHealth = 3;
+        this.lastHealth = 3; // 上一帧的血量，用于检测回血
+        this.healthRegenTimer = 0; // 恢复计时（30s 回一次血）
+        this.damageFlashTimer = 0; // 受击闪红计时
+        this.healAnimationTimer = 0; // 回血动画计时（0表示无动画）
+        this.healAnimationDuration = 30; // 回血动画持续30帧（0.5秒）
+        this.healStartRatio = 0; // 回血动画开始时的血量比例
+
         this.background = {
             offset: 0,
             speed: 1
@@ -124,6 +134,7 @@ class TightropeGame {
                 right_d1: null,
                 right_d2: null
             },
+            birdFrames: [], // 机械鸟帧动画
             bg_cloud: null,
             end_fail: null,
             end_success: null,
@@ -137,11 +148,35 @@ class TightropeGame {
             failSound: null, // 失败音效
             bombFuse: null,  // 炸弹引线音效
             bombExplosion: null, // 炸弹爆炸音效
+            birdSound: null, // 鸟出现音效
+            bulletSound: null, // 光束发射音效
+            hurtSound: null, // 受伤音效
             loaded: 0,
             ready: false
         };
         // 当前场景中存在的炸弹数量（用于控制引线音效）
         this.activeBombCount = 0;
+
+        // 机械鸟与子弹系统
+        this.mechanicalBird = {
+            active: false,
+            x: 0,
+            y: 0,
+            targetX: 0,
+            targetY: 0,
+            side: 'left',        // 'left' 或 'right'
+            state: 'idle',       // 'idle' | 'enter' | 'stay' | 'attack' | 'dead'
+            frameIndex: 0,
+            frameTimer: 0,
+            stayTimer: 0,
+            deadTimer: 0,
+            spawnTimer: 0,
+            spawnInterval: 600   // 初始 10 秒（600 帧）后尝试出现
+        };
+        this.playerBullets = []; // 玩家发射的子弹（用于打鸟）
+        // 绝对平衡输入打断计数（3次左右按键后提前结束绝对平衡）
+        this.balanceInputBreakCount = 0;
+
         this.loadImages();
         this.loadAudio();
         // 角色帧动画
@@ -377,6 +412,32 @@ class TightropeGame {
         });
     }
 
+    // 渲染游戏结束页面的排行榜
+    renderGameOverLeaderboard() {
+        const leaderboardList = document.getElementById('gameOverLeaderboardList');
+        if (!leaderboardList) return;
+        leaderboardList.innerHTML = '';
+        if (this.users.length === 0) {
+            leaderboardList.innerHTML = '<p style="color: rgba(255,255,255,0.6); font-size: 0.9em; padding: 10px;">暂无记录</p>';
+            return;
+        }
+        // 按分数排序
+        const sortedUsers = [...this.users].sort((a, b) => b.highScore - a.highScore);
+        sortedUsers.forEach((user, index) => {
+            const rankItem = document.createElement('div');
+            rankItem.className = 'game-over-rank-item';
+            if (this.currentUser === user.name) {
+                rankItem.classList.add('current-user');
+            }
+            rankItem.innerHTML = `
+                <span class="rank-number">${index + 1}</span>
+                <span class="rank-name">${user.name}</span>
+                <span class="rank-score">${user.highScore}m</span>
+            `;
+            leaderboardList.appendChild(rankItem);
+        });
+    }
+
     setupUserEventListeners() {
         document.getElementById('createUserBtn').addEventListener('click', () => {
             const userName = document.getElementById('newUserName').value.trim();
@@ -572,6 +633,23 @@ class TightropeGame {
         const end_success = new Image();
         end_success.onload = onLoaded;
         end_success.src = 'image/end_success.jpg';
+
+        // 机械鸟帧动画（bird_1 ~ bird_14）
+        this.images.birdFrames = [];
+        for (let i = 1; i <= 14; i++) {
+            const bird = new Image();
+            bird.onload = () => {
+                onLoaded();
+                // 输出第一张图片的尺寸信息（所有帧应该尺寸相同）
+                if (i === 1) {
+                    console.log(`机械鸟图片原始尺寸: ${bird.naturalWidth} × ${bird.naturalHeight} 像素`);
+                    console.log(`缩放系数: 1 (100%)`);
+                    console.log(`实际绘制尺寸: ${bird.naturalWidth} × ${bird.naturalHeight} 像素`);
+                }
+            };
+            bird.src = `image/bird_${i}.png`;
+            this.images.birdFrames.push(bird);
+        }
         
         
         this.images.bg = bg;
@@ -632,7 +710,7 @@ class TightropeGame {
             console.warn('炸弹引线音效文件不存在或加载失败，游戏将继续运行', e);
             onAudioLoaded();
         };
-        fuseAudio.src = '../fuse.MP3';
+        fuseAudio.src = 'fuse.MP3';
         fuseAudio.loop = true;
         fuseAudio.volume = 0.6;
         fuseAudio.preload = 'auto';
@@ -648,10 +726,40 @@ class TightropeGame {
             console.warn('炸弹爆炸音效文件不存在或加载失败，游戏将继续运行', e);
             onAudioLoaded();
         };
-        bombAudio.src = '../bomb.MP3';
+        bombAudio.src = 'bomb.MP3';
         bombAudio.volume = 0.6;
         bombAudio.preload = 'auto';
         this.audio.bombExplosion = bombAudio;
+
+        // 加载鸟出现音效
+        const birdAudio = new Audio();
+        birdAudio.onerror = (e) => {
+            console.warn('鸟出现音效文件不存在或加载失败，游戏将继续运行', e);
+        };
+        birdAudio.src = 'bird.MP3';
+        birdAudio.volume = 0.7;
+        birdAudio.preload = 'auto';
+        this.audio.birdSound = birdAudio;
+
+        // 加载光束发射音效
+        const bulletAudio = new Audio();
+        bulletAudio.onerror = (e) => {
+            console.warn('光束发射音效文件不存在或加载失败，游戏将继续运行', e);
+        };
+        bulletAudio.src = 'biu.MP3';
+        bulletAudio.volume = 0.1; // 降低音量（从0.6降到0.1）
+        bulletAudio.preload = 'auto';
+        this.audio.bulletSound = bulletAudio;
+
+        // 加载受伤音效
+        const hurtAudio = new Audio();
+        hurtAudio.onerror = (e) => {
+            console.warn('受伤音效文件不存在或加载失败，游戏将继续运行', e);
+        };
+        hurtAudio.src = 'hurt.MP3';
+        hurtAudio.volume = 0.5;
+        hurtAudio.preload = 'auto';
+        this.audio.hurtSound = hurtAudio;
     }
 
     init() {
@@ -726,6 +834,17 @@ class TightropeGame {
     setupEventListeners() {
         document.addEventListener('keydown', (e) => {
             this.keys[e.code] = true;
+            // 绝对平衡期间，左右键按下计数；累计3次则提前结束绝对平衡
+            if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+                const balancePowerUp = this.activePowerUps && this.activePowerUps.find(p => p.type === 'balance' && p.immuneToInput && p.balanceRestore);
+                if (balancePowerUp) {
+                    this.balanceInputBreakCount = (this.balanceInputBreakCount || 0) + 1;
+                    if (this.balanceInputBreakCount >= 3) {
+                        this.clearBalanceEffect();
+                        this.balanceInputBreakCount = 0;
+                    }
+                }
+            }
             // 炸弹救援阶段按下随机按键触发绝处逃生
             if (this.bombRescue.active && !this.bombRescue.resolved && e.code === this.bombRescue.rescueKey) {
                 e.preventDefault();
@@ -736,6 +855,59 @@ class TightropeGame {
             if (this.bombRescue.active && !this.bombRescue.resolved && e.code === 'Space') {
                 e.preventDefault();
                 return;
+            }
+            // 机械鸟射击：按下 C 发射子弹（从平衡杆两端端头，沿平衡杆方向相反方向各射出一枚）
+            if (!this.bombRescue.active && e.code === 'KeyC') {
+                // 播放光束发射音效
+                this.playBulletSound();
+                const angleRad = this.player.sway * Math.PI / 180;
+                const pivotX = this.balancePivot.x + 7; // 与平衡杆绘制的旋转中心保持一致
+                const pivotY = this.balancePivot.y + 2;
+                const rodHalfLen = this.balanceRod.length;
+                const margin = 10; // 稍微从杆内向外一点
+                const along = rodHalfLen + margin;
+                // 平衡杆贴图在 drawPlayer 中的垂直偏移：-ih/2 - 265，
+                // 杆的中轴线大致在 pivot 上方 265 像素处，这里取同样的 265 让子弹与杆对齐
+                const rodOffsetY = -265;
+                // 计算左右两端的局部坐标 (+along, rodOffsetY) 和 (-along, rodOffsetY)，再旋转到世界坐标
+                const localRightX = along;
+                const localLeftX = -along;
+                const localY = rodOffsetY;
+                const cosA = Math.cos(angleRad);
+                const sinA = Math.sin(angleRad);
+                // 右端
+                const startRightX = pivotX + cosA * localRightX - sinA * localY;
+                const startRightY = pivotY + sinA * localRightX + cosA * localY;
+                // 左端
+                const startLeftX = pivotX + cosA * localLeftX - sinA * localY;
+                const startLeftY = pivotY + sinA * localLeftX + cosA * localY;
+                const bulletSpeed = 14;
+                // 一枚从右端向"右侧"飞行
+                const rightVx = cosA * bulletSpeed;
+                const rightVy = sinA * bulletSpeed;
+                const rightAngle = Math.atan2(rightVy, rightVx);
+                this.playerBullets.push({
+                    x: startRightX,
+                    y: startRightY,
+                    vx: rightVx,
+                    vy: rightVy,
+                    radius: 8, // 保留用于碰撞检测
+                    angle: rightAngle, // 激光光束方向角度
+                    length: 30 // 激光光束长度
+                });
+                // 一枚从左端向"左侧"飞行
+                const leftVx = -cosA * bulletSpeed;
+                const leftVy = -sinA * bulletSpeed;
+                const leftAngle = Math.atan2(leftVy, leftVx);
+                this.playerBullets.push({
+                    x: startLeftX,
+                    y: startLeftY,
+                    vx: leftVx,
+                    vy: leftVy,
+                    radius: 8, // 保留用于碰撞检测
+                    angle: leftAngle, // 激光光束方向角度
+                    length: 30 // 激光光束长度
+                });
             }
             if (e.code === 'Space') {
                 e.preventDefault(); // 防止页面滚动
@@ -767,6 +939,21 @@ class TightropeGame {
                 this.startGame();
             }
         });
+
+        // 重新挑战按钮点击事件
+        const restartBtn = document.getElementById('restartBtn');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', () => {
+                if (!this.gameRunning) {
+                    // 检查是否有用户，如果没有则显示用户选择界面
+                    if (!this.currentUser) {
+                        this.showUserSelection();
+                        return;
+                    }
+                    this.startGame();
+                }
+            });
+        }
 
         // 音频控制事件监听器
         document.getElementById('muteBtn').addEventListener('click', () => {
@@ -844,6 +1031,19 @@ class TightropeGame {
         this.powerUpSpawnTimer = 0;
         this.activePowerUps = [];
         this.balanceRod.length = this.balanceRod.baseLength ? this.balanceRod.baseLength * 0.78 : 60;
+        // 重置生命与受击状态
+        this.playerHealth = this.playerMaxHealth;
+        this.lastHealth = this.playerMaxHealth;
+        this.healthRegenTimer = 0;
+        this.healAnimationTimer = 0;
+        this.healStartRatio = 1;
+        this.damageFlashTimer = 0;
+        // 重置机械鸟与子弹
+        this.mechanicalBird.active = false;
+        this.mechanicalBird.state = 'idle';
+        this.mechanicalBird.spawnTimer = 0;
+        this.mechanicalBird.spawnInterval = 600 + Math.floor(Math.random() * 300);
+        this.playerBullets = [];
         // 重置垂死挣扎/炸弹救援状态
         this.dangerZoneTimer = 0;
         this.bombRescue.active = false;
@@ -896,6 +1096,9 @@ class TightropeGame {
             this.updateParticles();
             this.updateLandscape();
             this.updatePowerUps();
+            this.updateMechanicalBird();
+            this.updatePlayerBullets();
+            // this.updateHealthRegen(); // 回血机制已禁用
             this.checkGameOver();
         }
         // 绝处逢生护罩动画独立更新（不阻塞游戏）
@@ -954,6 +1157,7 @@ class TightropeGame {
                 break;
             }
         }
+        // 恢复原有绝对平衡机制：期间持续强制回正并屏蔽左右输入
         if (isBalanceRestore) {
             this.player.sway = 0;
             this.player.swaySpeed = 0;
@@ -1007,7 +1211,11 @@ class TightropeGame {
                 gravityStrength = progress; // 从0增加到1.0
             }
             // 重力方向与sway相同，加速偏离（sway为正时，重力为正；sway为负时，重力为负）
-            const baseGravityForce = 0.04; // 基础重力强度
+            let baseGravityForce = 0.04; // 基础重力强度
+            // 0-500m 时重力强度降低为 85%
+            if (this.distance <= 500) {
+                baseGravityForce *= 0.85;
+            }
             // 杆长时重力影响降低为40%
             const rodLengthGravityReduction = 0.4 + flexibilityFactor * 0.6; // 0.4（杆长）到1.0（杆短）
             gravityEffect = (this.player.sway > 0 ? 1 : -1) * baseGravityForce * gravityStrength * rodLengthGravityReduction;
@@ -1015,7 +1223,8 @@ class TightropeGame {
         
         // 控制力：杆短时响应更快，杆长时响应稍慢（整体提升2倍）
         // 当重力影响增大时，按键对抗作用也增强（与重力强度成正比）
-        const baseControlMultiplier = (0.025 + flexibilityFactor * 0.035) * 2; // 0.05（杆长）到0.12（杆短）
+        // 整体控制力下调为原来的90%
+        const baseControlMultiplier = (0.025 + flexibilityFactor * 0.035) * 2 * 0.9; // 0.045（杆长）到0.108（杆短）
         // 根据角度增强按键控制力
         let controlEnhancement;
         if (absSway <= 15) {
@@ -1289,16 +1498,184 @@ class TightropeGame {
         }
     }
 
+        // 机械鸟逻辑：出现、停留、攻击、死亡
+    updateMechanicalBird() {
+        if (!this.images.birdFrames || this.images.birdFrames.length === 0) return;
+        const bird = this.mechanicalBird;
+        // 全局冷却：只在正常游戏状态且没有炸弹救援时计时
+        if (!bird.active) {
+            bird.spawnTimer++;
+            // 10-15 秒随机出现一次
+            if (bird.spawnTimer >= bird.spawnInterval) {
+                const absSway = Math.abs(this.player.sway);
+                // 仅在角色倾斜 15-30 度时才有机会出现
+                if (absSway >= 15 && absSway <= 30) {
+                    const centerX = this.width / 2;
+                    // 鸟整体再向外20像素、向上50像素
+                    let centerY = this.balancePivot.y - 350 - 50; // 角色上方再抬高50像素
+                    // 当距离超过1000米时，在垂直位置上下50像素范围内随机
+                    if (this.distance > 1000) {
+                        const randomOffset = (Math.random() - 0.5) * 100; // -50 到 +50 像素
+                        centerY += randomOffset;
+                    }
+                    const swaySign = this.player.sway >= 0 ? 1 : -1;
+                    const side = swaySign >= 0 ? 'right' : 'left';
+                    const offset = 250 + 20; // 再向外20像素 => 270
+                    bird.side = side;
+                    bird.targetX = centerX + (side === 'right' ? offset : -offset);
+                    bird.targetY = centerY;
+                    // 从画面外飞入
+                    bird.x = side === 'right' ? this.width + 80 : -80;
+                    bird.y = centerY;
+                    bird.state = 'enter';
+                    bird.frameIndex = 0;
+                    bird.frameTimer = 0;
+                    bird.stayTimer = 0;
+                    bird.deadTimer = 0;
+                    bird.active = true;
+                    bird.spawnTimer = 0;
+                    bird.spawnInterval = 600 + Math.floor(Math.random() * 300); // 10-15 秒
+                    // 播放鸟出现音效
+                    this.playBirdSound();
+                } else {
+                    // 未满足角度条件，下次再尝试
+                    bird.spawnTimer = 0;
+                    bird.spawnInterval = 300 + Math.floor(Math.random() * 300); // 5-10 秒后再试
+                }
+            }
+            return;
+        }
+
+        // 帧动画
+        bird.frameTimer++;
+        if (bird.frameTimer >= 4) {
+            bird.frameTimer = 0;
+            bird.frameIndex = (bird.frameIndex + 1) % this.images.birdFrames.length;
+        }
+
+        // 状态机
+        if (bird.state === 'enter') {
+            // 从画面外飞向目标点
+            const dx = bird.targetX - bird.x;
+            const dy = bird.targetY - bird.y;
+            const dist = Math.hypot(dx, dy) || 1;
+            const speed = 8;
+            if (dist <= speed) {
+                bird.x = bird.targetX;
+                bird.y = bird.targetY;
+                bird.state = 'stay';
+                bird.stayTimer = 0;
+            } else {
+                bird.x += (dx / dist) * speed;
+                bird.y += (dy / dist) * speed;
+            }
+        } else if (bird.state === 'stay') {
+            bird.stayTimer++;
+            // 停留 6 秒后，如果还活着则开始攻击玩家
+            if (bird.stayTimer >= 360) {
+                bird.state = 'attack';
+            }
+        } else if (bird.state === 'attack') {
+            // 朝玩家位置飞去
+            const targetX = this.balancePivot.x;
+            const targetY = this.balancePivot.y - 260; // 角色头部附近
+            const dx = targetX - bird.x;
+            const dy = targetY - bird.y;
+            const dist = Math.hypot(dx, dy) || 1;
+            const speed = 10;
+            if (dist <= speed) {
+                bird.x = targetX;
+                bird.y = targetY;
+                // 击中玩家
+                this.onBirdHitPlayer();
+                bird.active = false;
+                bird.state = 'idle';
+                bird.spawnTimer = 0;
+                bird.spawnInterval = 600 + Math.floor(Math.random() * 300); // 10-15 秒后再次尝试
+            } else {
+                bird.x += (dx / dist) * speed;
+                bird.y += (dy / dist) * speed;
+            }
+        } else if (bird.state === 'dead') {
+            bird.deadTimer++;
+            // 击中仅做“被击中”表达，快速消失：约0.2秒
+            if (bird.deadTimer >= 12) { // 12帧 ≈ 0.2秒
+                bird.active = false;
+                bird.state = 'idle';
+                bird.spawnTimer = 0;
+                bird.spawnInterval = 600 + Math.floor(Math.random() * 300);
+            }
+        }
+    }
+
+    // 玩家子弹更新（用于击落机械鸟）
+    updatePlayerBullets() {
+        if (!this.playerBullets || this.playerBullets.length === 0) return;
+        const bird = this.mechanicalBird;
+        for (let i = this.playerBullets.length - 1; i >= 0; i--) {
+            const b = this.playerBullets[i];
+            // 按自身速度沿平衡杆方向飞行
+            b.x += b.vx || 0;
+            b.y += b.vy || 0;
+            // 超出屏幕范围则删除
+            if (b.x < -100 || b.x > this.width + 100 || b.y < -100 || b.y > this.height + 100) {
+                this.playerBullets.splice(i, 1);
+                continue;
+            }
+            // 与机械鸟碰撞（仅在鸟处于 enter/stay 阶段时可以被击中）
+            if (bird.active && (bird.state === 'enter' || bird.state === 'stay')) {
+                const dx = b.x - bird.x;
+                const dy = b.y - bird.y;
+                const dist = Math.hypot(dx, dy);
+                const hitRadius = 70; // 简单碰撞半径
+                if (dist <= b.radius + hitRadius) {
+                    // 击中机械鸟
+                    this.playerBullets.splice(i, 1);
+                    bird.state = 'dead';
+                    bird.deadTimer = 0;
+                    // 停止鸟出现音效
+                    this.stopBirdSound();
+                    return;
+                }
+            }
+        }
+    }
+
+    // 生命恢复：每30秒恢复一点血
+    updateHealthRegen() {
+        // 检测回血（血量增加）
+        if (this.playerHealth > this.lastHealth) {
+            // 记录回血前的血量比例
+            this.healStartRatio = Math.max(0, Math.min(1, this.lastHealth / this.playerMaxHealth));
+            this.healAnimationTimer = this.healAnimationDuration;
+        }
+        // 如果血量减少，清除回血动画
+        if (this.playerHealth < this.lastHealth) {
+            this.healAnimationTimer = 0;
+        }
+        this.lastHealth = this.playerHealth;
+        
+        if (this.playerHealth >= this.playerMaxHealth) {
+            return;
+        }
+        this.healthRegenTimer++;
+        const regenFrames = 30 * 60; // 30秒
+        if (this.healthRegenTimer >= regenFrames) {
+            this.playerHealth = Math.min(this.playerMaxHealth, this.playerHealth + 1);
+            this.healthRegenTimer = 0;
+        }
+    }
+
     updateBalanceRod() {
         // 根据距离动态计算平衡杆伸缩速度（整体提升1.2倍）
         let currentExtendSpeed;
-        if (this.distance < 500) {
-            // 0-500m：速度从1.7到2（提升1.2倍）
-            const progress = this.distance / 500;
+        if (this.distance < 250) {
+            // 0-250m：速度从1.7到2（提升1.2倍）
+            const progress = this.distance / 250;
             currentExtendSpeed = (1.7 + progress * 0.3) * 1.2; // 从2.04增加到2.4
         } else if (this.distance < 2000) {
-            // 500-2000m：速度从2到3（提升1.2倍）
-            const progress = (this.distance - 500) / (2000 - 500);
+            // 250-2000m：速度从2到3（提升1.2倍）
+            const progress = (this.distance - 250) / (2000 - 250);
             currentExtendSpeed = (2 + progress * 1) * 1.2; // 从2.4增加到3.6
         } else if (this.distance < 2500) {
             // 2000-2500m：速度从3到5（提升1.2倍后继续增加到8）
@@ -1584,6 +1961,8 @@ class TightropeGame {
         if (this.hasActivePowerUp('balance') && (powerUp.type === 'unbalance' || powerUp.type === 'slow')) {
             this.clearBalanceEffect();
         }
+        // 绝对平衡（balance）持续时间：3秒，其间恢复原有“完全绝对平衡”机制，
+        // 但在3秒内如果玩家左右按键累计达到3次，则提前结束绝对平衡
         const activePowerUp = { type: powerUp.type, duration: powerUp.type === 'balance' ? 180 : 300, originalValue: null };
         if (powerUp.type === 'explosion') {
             // 一旦发生碰撞，进入绝处逢生阶段（引线音效是否停止由炸弹计数统一管理）
@@ -1592,12 +1971,18 @@ class TightropeGame {
         } else if (powerUp.type === 'speed') {
             this.speed += 0.05; // 直接增加速度，支持叠加
         } else if (powerUp.type === 'balance') {
-            this.player.sway = 0; this.player.swaySpeed = 0;
+            // 恢复原有绝对平衡机制：瞬间回正并在持续时间内免疫左右输入
+            this.player.sway = 0; 
+            this.player.swaySpeed = 0;
             if (!this.hasActivePowerUp('balance')) {
-                activePowerUp.originalValue = 0.95; activePowerUp.immuneToInput = true; activePowerUp.balanceRestore = true;
+                activePowerUp.originalValue = 0.95; 
+                activePowerUp.immuneToInput = true; 
+                activePowerUp.balanceRestore = true;
+                this.balanceInputBreakCount = 0; // 新一轮绝对平衡重置计数
             } else {
                 const existingBalance = this.activePowerUps.find(p => p.type === 'balance');
                 existingBalance.duration = 180;
+                this.balanceInputBreakCount = 0;
             }
         } else if (powerUp.type === 'slow') {
             this.speed -= 0.03; // 直接减少速度，支持叠加
@@ -1684,6 +2069,46 @@ class TightropeGame {
                 this.audio.bombExplosion.currentTime = 0;
                 this.audio.bombExplosion.playbackRate = 1.0;
                 this.audio.bombExplosion.play().catch(() => {});
+            }
+        } catch (e) {}
+    }
+
+    // 鸟出现音效：播放 bird.MP3
+    playBirdSound() {
+        try {
+            if (this.audio.birdSound) {
+                this.audio.birdSound.currentTime = 0;
+                this.audio.birdSound.play().catch(() => {});
+            }
+        } catch (e) {}
+    }
+
+    // 停止鸟出现音效
+    stopBirdSound() {
+        try {
+            if (this.audio.birdSound) {
+                this.audio.birdSound.pause();
+                this.audio.birdSound.currentTime = 0;
+            }
+        } catch (e) {}
+    }
+
+    // 光束发射音效：播放 biu.MP3
+    playBulletSound() {
+        try {
+            if (this.audio.bulletSound) {
+                this.audio.bulletSound.currentTime = 0;
+                this.audio.bulletSound.play().catch(() => {});
+            }
+        } catch (e) {}
+    }
+
+    // 受伤音效：播放 hurt.MP3
+    playHurtSound() {
+        try {
+            if (this.audio.hurtSound) {
+                this.audio.hurtSound.currentTime = 0;
+                this.audio.hurtSound.play().catch(() => {});
             }
         } catch (e) {}
     }
@@ -1808,6 +2233,19 @@ class TightropeGame {
         }
     }
 
+    // 机械鸟攻击命中玩家时调用：玩家闪红并扣血
+    onBirdHitPlayer() {
+        if (this.playerHealth <= 0) return;
+        this.playerHealth = Math.max(0, this.playerHealth - 1);
+        this.healthRegenTimer = 0;
+        this.damageFlashTimer = 40; // 闪烁一小段时间
+        // 播放受伤音效
+        this.playHurtSound();
+        if (this.playerHealth <= 0) {
+            this.gameOver();
+        }
+    }
+
 
     showPowerUpEffect(powerUp) {
         const effectText = document.createElement('div');
@@ -1838,6 +2276,308 @@ class TightropeGame {
             if (opacity > 0) requestAnimationFrame(animate); else document.body.removeChild(effectText);
         };
         animate();
+    }
+
+        // 机械鸟绘制（包含左右镜像）
+    drawMechanicalBird() {
+        const bird = this.mechanicalBird;
+        if (!bird.active || !this.images.birdFrames || this.images.birdFrames.length === 0) return;
+        const frame = this.images.birdFrames[bird.frameIndex % this.images.birdFrames.length];
+        if (!frame) return;
+        const x = bird.x;
+        const y = bird.y;
+        const imgW = frame.naturalWidth || frame.width || 0;
+        const imgH = frame.naturalHeight || frame.height || 0;
+        if (!imgW || !imgH) return;
+        // 缩放系数设为1，使用原始图片尺寸
+        const scale = 1;
+        const drawW = imgW * scale;
+        const drawH = imgH * scale;
+
+        this.ctx.save();
+        this.ctx.translate(x, y);
+        if (bird.side === 'right') {
+            // 右侧时水平镜像
+            this.ctx.scale(-1, 1);
+        }
+        // 死亡闪烁：dead 状态下交替透明
+        if (bird.state === 'dead' && (bird.deadTimer % 6 < 3)) {
+            this.ctx.globalAlpha = 0.2;
+        }
+        this.ctx.drawImage(frame, -drawW / 2, -drawH / 2, drawW, drawH);
+        this.ctx.restore();
+    }
+
+    drawPlayerBullets() {
+        if (!this.playerBullets || this.playerBullets.length === 0) return;
+        this.ctx.save();
+        for (const b of this.playerBullets) {
+            const angle = b.angle !== undefined ? b.angle : Math.atan2(b.vy, b.vx);
+            const length = b.length !== undefined ? b.length : 30;
+            const width = 16; // 激光光束宽度（原来4的4倍）
+            
+            // 计算激光光束的起点和终点
+            const halfLength = length / 2;
+            const startX = b.x - Math.cos(angle) * halfLength;
+            const startY = b.y - Math.sin(angle) * halfLength;
+            const endX = b.x + Math.cos(angle) * halfLength;
+            const endY = b.y + Math.sin(angle) * halfLength;
+            
+            // 绘制发光外圈（较暗，较粗）
+            this.ctx.strokeStyle = 'rgba(255, 215, 0, 0.4)';
+            this.ctx.lineWidth = width + 8;
+            this.ctx.lineCap = 'round';
+            this.ctx.beginPath();
+            this.ctx.moveTo(startX, startY);
+            this.ctx.lineTo(endX, endY);
+            this.ctx.stroke();
+            
+            // 绘制主光束（亮金色，渐变效果）
+            const gradient = this.ctx.createLinearGradient(startX, startY, endX, endY);
+            gradient.addColorStop(0, 'rgba(255, 215, 0, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 100, 1.0)');
+            gradient.addColorStop(1, 'rgba(255, 215, 0, 0.8)');
+            this.ctx.strokeStyle = gradient;
+            this.ctx.lineWidth = width;
+            this.ctx.lineCap = 'round';
+            this.ctx.beginPath();
+            this.ctx.moveTo(startX, startY);
+            this.ctx.lineTo(endX, endY);
+            this.ctx.stroke();
+            
+            // 绘制核心高光（最亮，最细）
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.moveTo(startX, startY);
+            this.ctx.lineTo(endX, endY);
+            this.ctx.stroke();
+        }
+        this.ctx.restore();
+    }
+
+    drawHealthBar() {
+        // 暂时禁用血条显示，代码保留以便后期重用
+        return;
+        
+        const maxHP = this.playerMaxHealth;
+        const hp = this.playerHealth;
+        if (!maxHP) return;
+        // 宽度缩小为70%
+        const barWidth = 70;
+        const barHeight = 7; // 高度变为7像素
+        const ratio = Math.max(0, Math.min(1, hp / maxHP));
+
+        // 以balancePivot为旋转中心，在人物头顶上方350像素的位置（上移50像素），右移10像素
+        const offsetY = -350; // 向上350像素（相对于旋转中心，上移了50像素）
+        const offsetX = 10; // 右移10像素（从20改为10，相当于左移10像素）
+        
+        this.ctx.save();
+        // 移动到旋转中心并旋转
+        this.ctx.translate(this.balancePivot.x, this.balancePivot.y);
+        this.ctx.rotate(this.player.sway * Math.PI / 180);
+        
+        // 在局部坐标系中绘制血条（相对于旋转中心，向上350像素，右移20像素）
+        const localX = -barWidth / 2 + offsetX; // 水平居中后右移20像素
+        const localY = offsetY; // 向上350像素
+        const radius = barHeight / 2; // 圆角半径（半圆端点）
+        
+        // 更新回血动画计时
+        if (this.healAnimationTimer > 0) {
+            this.healAnimationTimer--;
+        }
+        
+        // 绘制圆角矩形的辅助函数
+        const drawRoundedRect = (x, y, width, height, radius) => {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x + radius, y);
+            this.ctx.lineTo(x + width - radius, y);
+            this.ctx.arc(x + width - radius, y + radius, radius, -Math.PI / 2, 0);
+            this.ctx.lineTo(x + width, y + height - radius);
+            this.ctx.arc(x + width - radius, y + height - radius, radius, 0, Math.PI / 2);
+            this.ctx.lineTo(x + radius, y + height);
+            this.ctx.arc(x + radius, y + height - radius, radius, Math.PI / 2, Math.PI);
+            this.ctx.lineTo(x, y + radius);
+            this.ctx.arc(x + radius, y + radius, radius, Math.PI, -Math.PI / 2);
+            this.ctx.closePath();
+        };
+        
+        // 背景条（深色）
+        this.ctx.fillStyle = 'rgba(40, 40, 40, 0.8)';
+        drawRoundedRect(localX, localY, barWidth, barHeight, radius);
+        this.ctx.fill();
+
+        // 金色血量条
+        const fillW = barWidth * ratio;
+        if (fillW > 0) {
+            this.ctx.fillStyle = '#FFD700'; // 金色
+            // 如果血量不满，需要绘制部分圆角矩形
+            if (fillW < barWidth) {
+                // 绘制部分圆角矩形（左端圆角，右端直角）
+                this.ctx.beginPath();
+                this.ctx.moveTo(localX + radius, localY);
+                this.ctx.lineTo(localX + fillW, localY);
+                this.ctx.lineTo(localX + fillW, localY + barHeight);
+                this.ctx.lineTo(localX + radius, localY + barHeight);
+                this.ctx.arc(localX + radius, localY + radius, radius, Math.PI / 2, -Math.PI / 2, true);
+                this.ctx.closePath();
+                this.ctx.fill();
+            } else {
+                // 满血时绘制完整圆角矩形
+                drawRoundedRect(localX, localY, fillW, barHeight, radius);
+                this.ctx.fill();
+            }
+        }
+        
+        // 空血条（深红色）- 只绘制在血量条之后的部分
+        if (fillW < barWidth) {
+            const emptyW = barWidth - fillW;
+            this.ctx.fillStyle = 'rgba(80, 20, 20, 0.6)';
+            // 绘制右端圆角的空血条部分
+            if (fillW > 0) {
+                // 如果左边有血量，右边绘制直角矩形
+                this.ctx.fillRect(localX + fillW, localY, emptyW, barHeight);
+            } else {
+                // 如果完全没有血量，绘制完整圆角矩形
+                drawRoundedRect(localX, localY, barWidth, barHeight, radius);
+                this.ctx.fill();
+            }
+        }
+
+        // 回血增长动画（半透明）- 只在血量增加时显示
+        if (this.healAnimationTimer > 0 && ratio > this.healStartRatio) {
+            const animationProgress = 1 - (this.healAnimationTimer / this.healAnimationDuration);
+            const lastFillW = barWidth * this.healStartRatio; // 回血前的宽度
+            const currentFillW = barWidth * ratio; // 当前血量宽度
+            const animFillW = lastFillW + (currentFillW - lastFillW) * animationProgress;
+            
+            if (animFillW > lastFillW && animFillW > 0) {
+                this.ctx.globalAlpha = 0.5 * (1 - animationProgress); // 逐渐淡出
+                this.ctx.fillStyle = '#FFD700'; // 金色
+                // 绘制增长部分（从lastFillW到animFillW）
+                if (animFillW < barWidth) {
+                    // 增长部分未到右端，绘制矩形
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(localX + lastFillW, localY);
+                    this.ctx.lineTo(localX + animFillW, localY);
+                    this.ctx.lineTo(localX + animFillW, localY + barHeight);
+                    this.ctx.lineTo(localX + lastFillW, localY + barHeight);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                } else {
+                    // 增长部分到达右端，需要绘制圆角
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(localX + lastFillW, localY);
+                    this.ctx.lineTo(localX + barWidth - radius, localY);
+                    this.ctx.arc(localX + barWidth - radius, localY + radius, radius, -Math.PI / 2, 0);
+                    this.ctx.lineTo(localX + barWidth, localY + barHeight - radius);
+                    this.ctx.arc(localX + barWidth - radius, localY + barHeight - radius, radius, 0, Math.PI / 2);
+                    this.ctx.lineTo(localX + lastFillW, localY + barHeight);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                }
+                this.ctx.globalAlpha = 1.0; // 恢复不透明度
+            }
+        }
+
+        // 边框（白色）
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        this.ctx.lineWidth = 1;
+        drawRoundedRect(localX, localY, barWidth, barHeight, radius);
+        this.ctx.stroke();
+
+        this.ctx.restore();
+    }
+
+    drawHeartLives() {
+        const maxHP = this.playerMaxHealth;
+        const hp = this.playerHealth;
+        if (!maxHP) return;
+        
+        // 心形大小和间距
+        const heartSize = 40; // 心形大小
+        const heartSpacing = -5; // 心形之间的间距（负值表示重叠，更紧凑）
+        // 进度条：中心416px，宽度600px，左边界116px，右边界716px
+        const progressBarLeft = 116; // 进度条左边界
+        const progressBarRight = 716; // 进度条右边界
+        const spacing = 10; // 与进度条的间距
+        const heartTotalWidth = maxHP * heartSize + (maxHP - 1) * heartSpacing; // 动态计算总宽度
+        
+        // 计算左边可用空间和右边可用空间
+        const leftSpace = progressBarLeft; // 左边可用空间：0到116px
+        const rightSpace = this.width - progressBarRight; // 右边可用空间：716px到832px = 116px
+        
+        // 优先放在空间更大的一边，确保不重叠
+        let startX;
+        if (leftSpace >= heartTotalWidth + spacing) {
+            // 左边空间足够，放在进度条左边
+            startX = progressBarLeft - heartTotalWidth - spacing;
+        } else if (rightSpace >= heartTotalWidth + spacing) {
+            // 右边空间足够，放在进度条右边
+            startX = progressBarRight + spacing;
+        } else {
+            // 两边空间都不够，放在左边，紧贴画布左边界，减小间距避免重叠
+            startX = 10; // 留10px边距
+            // 如果会与进度条重叠，调整到刚好不重叠的位置
+            if (startX + heartTotalWidth > progressBarLeft - spacing) {
+                startX = Math.max(10, progressBarLeft - heartTotalWidth - 5); // 至少留5px间距
+            }
+        }
+        
+        const y = 15; // 上移55像素（从70改为15）
+        
+        this.ctx.save();
+        
+        // 绘制心形的辅助函数
+        const drawHeart = (x, y, size, color, alpha = 1.0) => {
+            this.ctx.save();
+            this.ctx.globalAlpha = alpha;
+            this.ctx.fillStyle = color;
+            this.ctx.beginPath();
+            // 绘制心形路径（标准心形）
+            const scale = size / 24; // 标准化大小（基于24像素基准）
+            // 从顶部中心点开始
+            this.ctx.moveTo(x, y - 2 * scale);
+            // 左上方圆弧
+            this.ctx.bezierCurveTo(x, y - 6 * scale, x - 6 * scale, y - 6 * scale, x - 6 * scale, y);
+            // 左下方
+            this.ctx.bezierCurveTo(x - 6 * scale, y + 3 * scale, x, y + 6 * scale, x, y + 8 * scale);
+            // 右下方
+            this.ctx.bezierCurveTo(x, y + 6 * scale, x + 6 * scale, y + 3 * scale, x + 6 * scale, y);
+            // 右上方圆弧
+            this.ctx.bezierCurveTo(x + 6 * scale, y - 6 * scale, x, y - 6 * scale, x, y - 2 * scale);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.restore();
+        };
+        
+        // 从左到右绘制心形（右边先消失）
+        for (let i = 0; i < maxHP; i++) {
+            const heartX = startX + i * (heartSize + heartSpacing);
+            
+            if (i < hp) {
+                // 有生命值，绘制金色心形
+                drawHeart(heartX + heartSize / 2, y + heartSize / 2, heartSize, '#FFD700', 1.0);
+            } else {
+                // 失去生命值，绘制灰色半透明心形
+                drawHeart(heartX + heartSize / 2, y + heartSize / 2, heartSize, '#808080', 0.5);
+            }
+        }
+        
+        this.ctx.restore();
+    }
+
+    drawDamageFlash() {
+        if (this.damageFlashTimer <= 0) return;
+        this.damageFlashTimer--;
+        // 前20帧内闪两下
+        const t = this.damageFlashTimer;
+        const flash = (t % 10) < 5;
+        if (!flash) return;
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(255,0,0,0.25)';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+        this.ctx.restore();
     }
 
     getPowerUpColor(type) {
@@ -1963,6 +2703,8 @@ class TightropeGame {
         }
         
         document.getElementById('gameOver').style.display = 'block';
+        // 渲染游戏结束页面的排行榜
+        this.renderGameOverLeaderboard();
         // 停止背景音乐
         this.stopBackgroundMusic();
     }
@@ -2052,6 +2794,11 @@ class TightropeGame {
         this.drawWindIndicator();
         this.drawParticles();
         this.drawPowerUps();
+        this.drawMechanicalBird();
+        this.drawPlayerBullets();
+        this.drawHealthBar();
+        this.drawHeartLives(); // 绘制心形生命值
+        this.drawDamageFlash();
         this.drawBombRescueOverlay(); // 炸弹救援提示与时间条
     }
 

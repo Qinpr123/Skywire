@@ -410,6 +410,8 @@ class TightropeGame {
         const startButton = document.getElementById('startButton');
         const hardModeButton = document.getElementById('hardModeButton');
         const startScreen = document.getElementById('startScreen');
+        // 确保startScreen是显示的
+        startScreen.style.display = 'flex';
         userSelection.style.display = 'none';
         startButton.style.display = 'block';
         hardModeButton.style.display = 'block';
@@ -1183,32 +1185,38 @@ class TightropeGame {
             if (e.code === 'Space') {
                 e.preventDefault(); // 防止页面滚动
                 
-                // 检查是否在玩家选择界面或新手教学界面，如果是则不响应
+                // 使用getComputedStyle检查各个界面的显示状态
                 const startScreen = document.getElementById('startScreen');
                 const tutorialLevelSelect = document.getElementById('tutorialLevelSelect');
                 const tutorialLevelInfo = document.getElementById('tutorialLevelInfo');
                 const tutorialLevelEnd = document.getElementById('tutorialLevelEnd');
                 const userSelection = document.getElementById('userSelection');
                 const gameOver = document.getElementById('gameOver');
+                const pauseScreen = document.getElementById('pauseScreen');
+                
+                // 辅助函数：检查元素是否可见
+                const isElementVisible = (element) => {
+                    if (!element) return false;
+                    const style = window.getComputedStyle(element);
+                    return style.display !== 'none' && style.visibility !== 'hidden';
+                };
+                
+                // 如果其他界面显示，不响应空格键（暂停界面除外，因为需要支持继续游戏）
+                if (isElementVisible(tutorialLevelSelect) || 
+                    isElementVisible(tutorialLevelInfo) || 
+                    isElementVisible(tutorialLevelEnd) || 
+                    isElementVisible(gameOver)) {
+                    return;
+                }
                 
                 // 如果玩家选择界面显示，不响应空格键
-                if (userSelection && userSelection.style.display !== 'none') {
+                if (isElementVisible(userSelection)) {
                     return;
                 }
-                // 如果新手教学选择界面显示，不响应空格键
-                if (tutorialLevelSelect && tutorialLevelSelect.style.display !== 'none') {
-                    return;
-                }
-                // 如果关卡说明界面显示，不响应空格键
-                if (tutorialLevelInfo && tutorialLevelInfo.style.display !== 'none') {
-                    return;
-                }
-                // 如果关卡结束界面显示，不响应空格键
-                if (tutorialLevelEnd && tutorialLevelEnd.style.display !== 'none') {
-                    return;
-                }
-                // 如果游戏结束界面显示，不响应空格键
-                if (gameOver && gameOver.style.display !== 'none') {
+                
+                // 如果游戏正在运行且暂停界面显示，按空格键继续游戏
+                if (this.gameRunning && isElementVisible(pauseScreen)) {
+                    this.togglePause();
                     return;
                 }
                 
@@ -1218,20 +1226,22 @@ class TightropeGame {
                         this.showUserSelection();
                         return;
                     }
-                    // 检查是否在首页（startScreen显示且startButton显示）
-                    const startButton = document.getElementById('startButton');
-                    // 使用getComputedStyle检查元素是否可见
-                    const startScreenStyle = window.getComputedStyle(startScreen);
-                    const startButtonStyle = startButton ? window.getComputedStyle(startButton) : null;
-                    const isStartScreenVisible = startScreenStyle.display !== 'none' && startScreenStyle.visibility !== 'hidden';
-                    const isStartButtonVisible = startButtonStyle && startButtonStyle.display !== 'none' && startButtonStyle.visibility !== 'hidden';
                     
-                    if (isStartScreenVisible && isStartButtonVisible) {
-                        // 在首页时，空格键触发高难度模式
-                        this.startHardModeGame();
-                        return;
+                    // 检查是否在主界面（startScreen显示）
+                    if (isElementVisible(startScreen)) {
+                        const startButton = document.getElementById('startButton');
+                        const hardModeButton = document.getElementById('hardModeButton');
+                        const isStartButtonVisible = isElementVisible(startButton);
+                        const isHardModeButtonVisible = isElementVisible(hardModeButton);
+                        
+                        // 如果startButton或hardModeButton显示，则触发高难度模式
+                        if (isStartButtonVisible || isHardModeButtonVisible) {
+                            this.startHardModeGame();
+                            return;
+                        }
                     }
-                    // 不在首页时，正常开始游戏
+                    
+                    // 其他情况，正常开始游戏
                     this.startGame();
                 } else {
                     this.togglePause();
@@ -1304,11 +1314,28 @@ class TightropeGame {
         const helpTrigger = document.getElementById('helpTrigger');
         if (helpTrigger) {
             helpTrigger.addEventListener('click', () => {
-                // 如果游戏结束界面显示，先隐藏它（和切换玩家按钮行为一致）
-                const gameOver = document.getElementById('gameOver');
-                if (gameOver && gameOver.style.display !== 'none') {
-                    gameOver.style.display = 'none';
+                // 如果游戏正在运行，停止游戏
+                if (this.gameRunning) {
+                    this.gameRunning = false;
+                    this.gamePaused = false;
                 }
+                
+                // 关闭背景音乐
+                this.stopBackgroundMusic();
+                
+                // 隐藏所有游戏相关界面
+                const gameOver = document.getElementById('gameOver');
+                const pauseScreen = document.getElementById('pauseScreen');
+                const tutorialLevelSelect = document.getElementById('tutorialLevelSelect');
+                const tutorialLevelInfo = document.getElementById('tutorialLevelInfo');
+                const tutorialLevelEnd = document.getElementById('tutorialLevelEnd');
+                
+                if (gameOver) gameOver.style.display = 'none';
+                if (pauseScreen) pauseScreen.style.display = 'none';
+                if (tutorialLevelSelect) tutorialLevelSelect.style.display = 'none';
+                if (tutorialLevelInfo) tutorialLevelInfo.style.display = 'none';
+                if (tutorialLevelEnd) tutorialLevelEnd.style.display = 'none';
+                
                 // 显示玩家选择界面
                 document.getElementById('startScreen').style.display = 'flex';
                 this.showUserSelection();
@@ -1328,6 +1355,17 @@ class TightropeGame {
         if (backToStartBtn) {
             backToStartBtn.addEventListener('click', () => {
                 this.hideTutorialLevelSelect();
+            });
+        }
+        
+        // 综合挑战按钮
+        const challengeBtn = document.getElementById('challengeBtn');
+        if (challengeBtn) {
+            challengeBtn.addEventListener('click', () => {
+                // 隐藏新手教学界面
+                document.getElementById('tutorialLevelSelect').style.display = 'none';
+                // 开始高难度模式
+                this.startHardModeGame();
             });
         }
 
@@ -1425,6 +1463,8 @@ class TightropeGame {
 
     updateTutorialLevelSelect() {
         const levelItems = document.querySelectorAll('.tutorial-level-item');
+        let allCompleted = true; // 检查是否所有关卡都通关
+        
         levelItems.forEach(item => {
             const level = parseInt(item.getAttribute('data-level'));
             if (this.tutorialUnlockedLevels.includes(level)) {
@@ -1442,15 +1482,19 @@ class TightropeGame {
                         } else if (bestDistance && bestDistance > 0) {
                             // 有距离记录但未通关，显示距离但不显示"已通关"
                             statusEl.textContent = `已尝试 • ${bestDistance}m`;
+                            allCompleted = false; // 关卡3未通关
                         } else {
                             statusEl.textContent = '已解锁';
+                            allCompleted = false;
                         }
                     } else {
-                        // 其他关卡：有距离记录就显示"已通关"
-                        if (bestDistance && bestDistance > 0) {
-                            statusEl.textContent = `已通关 • ${bestDistance}m`;
+                        // 其他关卡：检查completed状态或距离记录
+                        // 如果有completed状态，优先使用；否则使用距离记录判断
+                        if (isCompleted || (bestDistance && bestDistance > 0)) {
+                            statusEl.textContent = `已通关 • ${bestDistance || 0}m`;
                         } else {
                             statusEl.textContent = '已解锁';
+                            allCompleted = false;
                         }
                     }
                     statusEl.classList.add('unlocked');
@@ -1462,8 +1506,19 @@ class TightropeGame {
                     statusEl.textContent = '🔒 未解锁';
                     statusEl.classList.remove('unlocked');
                 }
+                allCompleted = false; // 有关卡未解锁
             }
         });
+        
+        // 如果所有关卡都通关，显示"综合挑战"按钮
+        const challengeBtn = document.getElementById('challengeBtn');
+        if (challengeBtn) {
+            if (allCompleted) {
+                challengeBtn.style.display = 'block';
+            } else {
+                challengeBtn.style.display = 'none';
+            }
+        }
     }
 
     showTutorialLevelInfo(level) {
@@ -1477,30 +1532,56 @@ class TightropeGame {
         const titleEl = document.getElementById('levelInfoTitle');
         const contentEl = document.getElementById('levelInfoContent');
         
-        if (level === 1) {
-            titleEl.textContent = '关卡1：基础平衡';
+        // 图片路径映射
+        const levelImages = {
+            1: { title: '关卡1：基础平衡', src: 'image/level1.png' },
+            2: { title: '关卡2：道具收集', src: 'image/level2.png' },
+            3: { title: '关卡3：绝处逢生', src: 'image/level3.png' },
+            4: { title: '关卡4：击退怪鸟', src: 'image/level4.png' }
+        };
+        
+        if (levelImages[level]) {
+            titleEl.textContent = levelImages[level].title;
             contentEl.className = 'level-info-content level-info-image';
+            
+            // 先显示加载动画
             contentEl.innerHTML = `
-                <img src="image/level1.png" alt="关卡1说明" style="width: 100%; height: auto; display: block;">
+                <div class="level-image-loading">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text">加载中...</p>
+                </div>
+                <img src="${levelImages[level].src}" alt="${levelImages[level].title}" style="width: 100%; height: auto; display: none;">
             `;
-        } else if (level === 2) {
-            titleEl.textContent = '关卡2：道具收集';
-            contentEl.className = 'level-info-content level-info-image';
-            contentEl.innerHTML = `
-                <img src="image/level2.png" alt="关卡2说明" style="width: 100%; height: auto; display: block;">
-            `;
-        } else if (level === 3) {
-            titleEl.textContent = '关卡3：绝处逢生';
-            contentEl.className = 'level-info-content level-info-image';
-            contentEl.innerHTML = `
-                <img src="image/level3.png" alt="关卡3说明" style="width: 100%; height: auto; display: block;">
-            `;
-        } else if (level === 4) {
-            titleEl.textContent = '关卡4：击退怪鸟';
-            contentEl.className = 'level-info-content level-info-image';
-            contentEl.innerHTML = `
-                <img src="image/level4.png" alt="关卡4说明" style="width: 100%; height: auto; display: block;">
-            `;
+            
+            // 获取DOM中的img元素并监听加载事件
+            const imgElement = contentEl.querySelector('img');
+            if (imgElement) {
+                // 如果图片已经缓存，立即显示
+                if (imgElement.complete && imgElement.naturalHeight !== 0) {
+                    const loadingDiv = contentEl.querySelector('.level-image-loading');
+                    if (loadingDiv) {
+                        loadingDiv.style.display = 'none';
+                    }
+                    imgElement.style.display = 'block';
+                } else {
+                    // 监听图片加载完成事件
+                    imgElement.onload = () => {
+                        // 图片加载完成，隐藏加载动画，显示图片
+                        const loadingDiv = contentEl.querySelector('.level-image-loading');
+                        if (loadingDiv) {
+                            loadingDiv.style.display = 'none';
+                        }
+                        imgElement.style.display = 'block';
+                    };
+                    imgElement.onerror = () => {
+                        // 图片加载失败，显示错误信息
+                        const loadingDiv = contentEl.querySelector('.level-image-loading');
+                        if (loadingDiv) {
+                            loadingDiv.innerHTML = '<p style="color: #ff6b6b; text-align: center; padding: 20px;">图片加载失败</p>';
+                        }
+                    };
+                }
+            }
         } else {
             titleEl.textContent = `关卡${level}`;
             contentEl.className = 'level-info-content';
@@ -2803,11 +2884,11 @@ class TightropeGame {
                 type = 'explosion';
                 this.tutorialLevel3BombSpawned = true;
             } else {
-                // 炸弹出现频率：平衡、失衡、炸弹各占33.3%
+                // 调整概率：平衡40%，失衡30%，炸弹30%
                 const rand = Math.random();
-                if (rand < 0.333) {
+                if (rand < 0.4) {
                     type = 'balance';
-                } else if (rand < 0.666) {
+                } else if (rand < 0.7) {
                     type = 'unbalance';
                 } else {
                     type = 'explosion';

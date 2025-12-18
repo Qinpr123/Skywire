@@ -33,6 +33,7 @@
             <div id="currentDistance">
                 <span id="currentDistanceNumber">0</span><span id="currentDistanceUnit">m</span>
             </div>
+            <div id="absoluteBalanceTime" style="color: #FFD700; font-size: 28px; font-weight: bold; text-align: center; margin-top: 125px; display: none; white-space: nowrap; align-items: baseline; justify-content: center;">0.0/35.0<span style="font-size: 24px; margin-left: 2px;">S</span></div>
         </div>
         
         <!-- 全局音频控制 -->
@@ -41,39 +42,30 @@
             <input type="range" id="volumeSlider" min="0" max="100" value="30" title="音量控制">
         </div>
         
-        <!-- 全局操作说明问号 -->
+        <!-- 用户图标 -->
         <div id="helpTrigger">
-            <div class="help-icon">?</div>
-            <!-- 操作说明内容 -->
-            <div id="instructions">
-                <div class="instruction-item">
-                    <span class="key">⇐ ⇒</span>
-                    <span class="desc">控制平衡</span>
-                </div>
-                <div class="instruction-item">
-                    <span class="key">Z</span>
-                    <span class="desc">伸长平衡杆</span>
-                </div>
-                <div class="instruction-item">
-                    <span class="key">X</span>
-                    <span class="desc">缩短平衡杆</span>
-                </div>
-                <div class="instruction-item">
-                    <span class="key">C</span>
-                    <span class="desc">激光射击</span>
-                </div>
-                <div class="instruction-item">
-                    <span class="key">空格</span>
-                    <span class="desc">开始/暂停</span>
-                </div>
-                <div class="instruction-tip">保持摆幅 < 60° 避免坠落</div>
-            </div>
+            <div class="help-icon">👤</div>
         </div>
         
         <div id="startScreen">
             <!-- 用户选择区域 -->
             <div id="userSelection">
-                <h3>选择玩家</h3>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 20px;">
+                    <h3 style="margin: 0;">选择玩家</h3>
+                    <button id="editUsersBtn" class="edit-btn" title="编辑玩家">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </button>
+                    <button id="saveUsersBtn" class="save-btn" title="保存" style="display: none;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                            <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                    </button>
+                </div>
                 <div id="userList"></div>
                 <div id="userInputArea">
                     <input type="text" id="newUserName" placeholder="输入新玩家名称" maxlength="10">
@@ -86,7 +78,11 @@
             </div>
             <!-- 开始按钮 -->
             <button id="startButton" style="display: none;">
-                <span>按空格键开始游戏</span>
+                <span>新手教学</span>
+            </button>
+            <!-- 直接挑战高难度按钮 -->
+            <button id="hardModeButton" style="display: none;">
+                <span>按空格键直接挑战高难度</span>
             </button>
         </div>
         <div id="gameOver">
@@ -110,6 +106,10 @@
         
         <div id="pauseScreen">
             <h2>游戏暂停</h2>
+            <div class="keyboard-guide">
+                <h3>按键说明</h3>
+                <img src="image/keyboard.png" alt="按键说明" class="keyboard-image">
+            </div>
             <div class="powerup-guide">
                 <h3>道具说明</h3>
                 <div class="powerup-list">
@@ -137,7 +137,7 @@
                         </div>
                         <div class="powerup-info">
                             <span class="powerup-name">爆炸道具</span>
-                            <span class="powerup-desc">直接游戏结束</span>
+                            <span class="powerup-desc">需要绝处逢生</span>
                         </div>
                     </div>
                     <div class="powerup-item">
@@ -146,7 +146,7 @@
                         </div>
                         <div class="powerup-info">
                             <span class="powerup-name">加速道具</span>
-                            <span class="powerup-desc">提升移动速度2倍</span>
+                            <span class="powerup-desc">提升移动速度</span>
                         </div>
                     </div>
                     <div class="powerup-item">
@@ -161,6 +161,65 @@
                 </div>
             </div>
             <p class="continue-text">按空格键继续游戏</p>
+        </div>
+
+        <!-- 新手教学关卡选择界面 -->
+        <div id="tutorialLevelSelect" style="display: none;">
+            <div class="tutorial-card">
+                <h2>新手教学</h2>
+                <div class="tutorial-levels">
+                    <div class="tutorial-level-item" data-level="1">
+                        <div class="level-number">1</div>
+                        <div class="level-title">基础平衡</div>
+                        <div class="level-status unlocked">已解锁</div>
+                    </div>
+                    <div class="tutorial-level-item locked" data-level="2">
+                        <div class="level-number">2</div>
+                        <div class="level-title">道具收集</div>
+                        <div class="level-status">🔒 未解锁</div>
+                    </div>
+                    <div class="tutorial-level-item locked" data-level="3">
+                        <div class="level-number">3</div>
+                        <div class="level-title">绝处逢生</div>
+                        <div class="level-status">🔒 未解锁</div>
+                    </div>
+                    <div class="tutorial-level-item locked" data-level="4">
+                        <div class="level-number">4</div>
+                        <div class="level-title">击退怪鸟</div>
+                        <div class="level-status">🔒 未解锁</div>
+                    </div>
+                </div>
+                <button id="backToStartBtn" class="tutorial-back-btn">返回</button>
+            </div>
+        </div>
+
+        <!-- 关卡说明界面 -->
+        <div id="tutorialLevelInfo" style="display: none;">
+            <div class="tutorial-card">
+                <h2 id="levelInfoTitle">关卡说明</h2>
+                <div id="levelInfoContent" class="level-info-content">
+                    <!-- 内容由JS动态填充 -->
+                </div>
+                <button id="startLevelBtn" class="tutorial-start-btn">开始挑战</button>
+                <button id="backToLevelSelectBtn" class="tutorial-back-btn">返回</button>
+            </div>
+        </div>
+
+        <!-- 关卡结束界面 -->
+        <div id="tutorialLevelEnd" style="display: none;">
+            <div class="tutorial-card">
+                <h2 id="levelEndTitle">关卡结束</h2>
+                <div id="levelEndMessage" class="level-end-message"></div>
+                <div id="levelEndDistance" class="level-end-distance"></div>
+                <div id="tutorialLevelEndButtons" class="tutorial-level-end-buttons">
+                    <!-- 成功时显示 -->
+                    <button id="nextLevelBtn" class="tutorial-next-btn" style="display: none;">下一关</button>
+                    <!-- 失败时显示 -->
+                    <button id="retryLevelBtn" class="tutorial-retry-btn" style="display: none;">重新挑战</button>
+                    <!-- 始终显示 -->
+                    <button id="backToTutorialBtn" class="tutorial-back-btn">返回新手教学</button>
+                </div>
+            </div>
         </div>
     </div>
 

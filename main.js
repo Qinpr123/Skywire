@@ -71,6 +71,35 @@ class TightropeGame {
         this.users = this.loadUsers();
         this.highScore = 0;
         this.gameStarted = false;
+        this.editMode = false; // 编辑模式状态
+
+        // 新手教学关卡系统
+        this.tutorialMode = false; // 是否处于新手教学模式
+        this.currentTutorialLevel = 0; // 当前关卡（0表示未开始）
+        const tutorialProgress = this.loadTutorialProgress(); // 加载关卡进度
+        this.tutorialUnlockedLevels = tutorialProgress.unlocked || tutorialProgress; // 兼容旧格式
+        this.tutorialLevelDistances = tutorialProgress.distances || {}; // 每个关卡的最远距离
+        this.tutorialLevelCompletedStatus = tutorialProgress.completed || {}; // 每个关卡的通关状态（对象）
+        this.tutorialLevelCompleted = false; // 当前关卡是否已完成检查（布尔值，用于避免重复触发）
+        this.tutorialPassedDistance = 0; // 当前关卡已通过的距离
+        this.tutorialTargetDistance = 200; // 通关目标距离（关卡1为200m，关卡2为400m）
+        // 关卡2的时间限制系统（必须在规定时间内完成400m）
+        // 基础速度0.1，无道具情况下走400m需要4000帧（约66.67秒）
+        // 设置时间限制为3000帧（50秒），迫使玩家必须吃加速道具
+        this.tutorialLevel2TimeLimit = 3000; // 时间限制（帧数，50秒）
+        this.tutorialLevel2TimeElapsed = 0; // 已用时间（帧数）
+        this.tutorialLevel2FailReason = null; // 失败原因：'timeout'（时间到）或 'fall'（坠落）
+        this.tutorialLevel2TimeSoundPlayed = [false, false, false, false]; // 4秒倒计时音效播放状态（对应4秒、3秒、2秒、1秒）
+        // 关卡3：失败原因
+        this.tutorialLevel3FailReason = null; // 失败原因：'balance'（绝对平衡时间不足）或 'fall'（坠落）
+        // 关卡3：确保至少生成1次炸弹道具
+        this.tutorialLevel3BombSpawned = false; // 关卡3是否已生成炸弹道具
+        // 绝对平衡计时系统（累计平衡道具的持续时间）
+        this.absoluteBalanceTime = 0; // 累计绝对平衡时间（帧数）
+        this.absoluteBalanceTarget = 900; // 目标：15秒（60fps * 15 = 900帧）
+        // 关卡4：击中机械鸟计数系统
+        this.tutorialLevel4BirdsKilled = 0; // 关卡4已击中机械鸟数量
+        this.tutorialLevel4BirdsTarget = 6; // 关卡4目标：击中6只
 
         // 初始化音效系统
         this.audioContext = null;
@@ -146,6 +175,7 @@ class TightropeGame {
         this.audio = {
             bgMusic: null,
             failSound: null, // 失败音效
+            clapsSound: null, // 鼓掌音效
             bombFuse: null,  // 炸弹引线音效
             bombExplosion: null, // 炸弹爆炸音效
             birdSound: null, // 鸟出现音效
@@ -245,15 +275,72 @@ class TightropeGame {
         localStorage.setItem('tightropeUsers', JSON.stringify(users));
     }
 
+    // 新手教学关卡进度系统
+    loadTutorialProgress() {
+        if (!this.currentUser) return { unlocked: [1], distances: {}, completed: {} }; // 默认解锁第1关
+        const key = `tutorialProgress_${this.currentUser}`;
+        const saved = localStorage.getItem(key);
+        if (saved) {
+            const data = JSON.parse(saved);
+            // 兼容旧格式（只有数组的情况）
+            if (Array.isArray(data)) {
+                return { unlocked: data, distances: {}, completed: {} };
+            }
+            // 兼容旧格式（没有completed字段的情况）
+            if (!data.completed) {
+                data.completed = {};
+            }
+            return data;
+        }
+        return { unlocked: [1], distances: {}, completed: {} }; // 默认解锁第1关
+    }
+
+    saveTutorialProgress() {
+        if (!this.currentUser) return;
+        const key = `tutorialProgress_${this.currentUser}`;
+        const data = {
+            unlocked: this.tutorialUnlockedLevels,
+            distances: this.tutorialLevelDistances || {},
+            completed: this.tutorialLevelCompletedStatus || {}
+        };
+        localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    unlockTutorialLevel(level) {
+        if (!this.tutorialUnlockedLevels.includes(level)) {
+            this.tutorialUnlockedLevels.push(level);
+            this.saveTutorialProgress();
+        }
+    }
+
+    saveTutorialLevelDistance(level, distance) {
+        // 保存关卡的最远距离（不更新highScore）
+        if (!this.tutorialLevelDistances) {
+            this.tutorialLevelDistances = {};
+        }
+        const currentBest = this.tutorialLevelDistances[level] || 0;
+        if (distance > currentBest) {
+            this.tutorialLevelDistances[level] = Math.floor(distance);
+            this.saveTutorialProgress();
+        }
+    }
+
     getCurrentUser() {
         return this.currentUser;
     }
 
     setCurrentUser(userName) {
+        // 先设置当前用户，再加载该用户的关卡进度
         this.currentUser = userName;
+        localStorage.setItem('currentUser', userName);
+        // 重新加载关卡进度
+        const tutorialProgress = this.loadTutorialProgress();
+        this.tutorialUnlockedLevels = tutorialProgress.unlocked || tutorialProgress; // 兼容旧格式
+        this.tutorialLevelDistances = tutorialProgress.distances || {};
+        this.tutorialLevelCompletedStatus = tutorialProgress.completed || {}; // 每个关卡的通关状态（对象）
+        this.tutorialLevelCompleted = false; // 当前关卡是否已完成检查（布尔值）
         const user = this.users.find(u => u.name === userName);
         this.highScore = user ? user.highScore : 0;
-        localStorage.setItem('currentUser', userName);
         this.updateUI();
     }
 
@@ -303,9 +390,16 @@ class TightropeGame {
     showUserSelection() {
         const userSelection = document.getElementById('userSelection');
         const startButton = document.getElementById('startButton');
+        const hardModeButton = document.getElementById('hardModeButton');
         const startScreen = document.getElementById('startScreen');
         userSelection.style.display = 'block';
         startButton.style.display = 'none';
+        if (hardModeButton) {
+            hardModeButton.style.display = 'none';
+        }
+        // 确保编辑模式状态正确
+        this.editMode = false;
+        this.updateEditButtons();
         startScreen.style.justifyContent = 'center';
         startScreen.style.padding = '40px';
         startScreen.style.overflowY = 'auto';
@@ -314,9 +408,11 @@ class TightropeGame {
     showStartButton() {
         const userSelection = document.getElementById('userSelection');
         const startButton = document.getElementById('startButton');
+        const hardModeButton = document.getElementById('hardModeButton');
         const startScreen = document.getElementById('startScreen');
         userSelection.style.display = 'none';
         startButton.style.display = 'block';
+        hardModeButton.style.display = 'block';
         startScreen.style.justifyContent = 'flex-end';
         startScreen.style.paddingTop = '0';
         startScreen.style.paddingLeft = '0';
@@ -341,32 +437,147 @@ class TightropeGame {
             
             const userBtn = document.createElement('button');
             userBtn.className = 'user-btn';
-            userBtn.innerHTML = `
-                <span class="user-name">${user.name}</span>
-                <span class="user-score">最高: ${user.highScore}m</span>
-            `;
-            userBtn.addEventListener('click', () => {
-                this.setCurrentUser(user.name);
-                this.renderUserList();
-                this.showStartButton();
-                this.updateProgressBarMarkers();
-            });
             
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'delete-user-btn';
-            deleteBtn.innerHTML = '×';
-            deleteBtn.title = '删除玩家';
-            deleteBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (confirm(`确定要删除玩家"${user.name}"吗？`)) {
-                    this.deleteUser(user.name);
+            if (this.editMode) {
+                // 编辑模式：显示可编辑的输入框
+                const nameWrapper = document.createElement('span');
+                nameWrapper.className = 'user-name-wrapper';
+                
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.className = 'user-name-input';
+                nameInput.value = user.name;
+                nameInput.maxLength = 10;
+                nameInput.dataset.originalName = user.name;
+                
+                nameWrapper.appendChild(nameInput);
+                
+                const scoreSpan = document.createElement('span');
+                scoreSpan.className = 'user-score';
+                scoreSpan.textContent = `最高: ${user.highScore}m`;
+                
+                userBtn.appendChild(nameWrapper);
+                userBtn.appendChild(scoreSpan);
+                
+                // 编辑模式下，点击按钮不切换用户
+                userBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    nameInput.focus();
+                    nameInput.select();
+                });
+            } else {
+                // 正常模式：显示用户名
+                userBtn.innerHTML = `
+                    <span class="user-name">${user.name}</span>
+                    <span class="user-score">最高: ${user.highScore}m</span>
+                `;
+                userBtn.addEventListener('click', () => {
+                    this.setCurrentUser(user.name);
+                    this.renderUserList();
+                    this.showStartButton();
+                    this.updateProgressBarMarkers();
+                });
+            }
+            
+            userItem.appendChild(userBtn);
+            
+            // 只在编辑模式下显示删除按钮
+            if (this.editMode) {
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-user-btn';
+                deleteBtn.innerHTML = '×';
+                deleteBtn.title = '删除玩家';
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (confirm(`确定要删除玩家"${user.name}"吗？`)) {
+                        this.deleteUser(user.name);
+                    }
+                });
+                userItem.appendChild(deleteBtn);
+            }
+            
+            userList.appendChild(userItem);
+        });
+    }
+
+    updateEditButtons() {
+        const editBtn = document.getElementById('editUsersBtn');
+        const saveBtn = document.getElementById('saveUsersBtn');
+        if (editBtn && saveBtn) {
+            if (this.editMode) {
+                editBtn.style.display = 'none';
+                saveBtn.style.display = 'flex';
+            } else {
+                editBtn.style.display = 'flex';
+                saveBtn.style.display = 'none';
+            }
+        }
+    }
+
+    saveUserChanges() {
+        const nameInputs = document.querySelectorAll('.user-name-input');
+        const nameChanges = {};
+        let hasChanges = false;
+        
+        nameInputs.forEach(input => {
+            const originalName = input.dataset.originalName;
+            const newName = input.value.trim();
+            
+            if (newName && newName !== originalName) {
+                // 检查新名称是否已存在
+                const nameExists = this.users.some(u => u.name === newName && u.name !== originalName);
+                if (nameExists) {
+                    alert(`玩家名称"${newName}"已存在，请使用其他名称`);
+                    input.value = originalName;
+                    return;
+                }
+                
+                if (newName.length > 0 && newName.length <= 10) {
+                    nameChanges[originalName] = newName;
+                    hasChanges = true;
+                } else {
+                    alert('玩家名称长度必须在1-10个字符之间');
+                    input.value = originalName;
+                }
+            }
+        });
+        
+        if (hasChanges) {
+            // 更新用户名称
+            Object.keys(nameChanges).forEach(oldName => {
+                const newName = nameChanges[oldName];
+                const user = this.users.find(u => u.name === oldName);
+                if (user) {
+                    user.name = newName;
+                    
+                    // 迁移关卡进度数据
+                    const oldProgressKey = `tutorialProgress_${oldName}`;
+                    const newProgressKey = `tutorialProgress_${newName}`;
+                    const oldProgress = localStorage.getItem(oldProgressKey);
+                    if (oldProgress) {
+                        // 将旧的关卡进度迁移到新的键名
+                        localStorage.setItem(newProgressKey, oldProgress);
+                        // 删除旧的关卡进度数据
+                        localStorage.removeItem(oldProgressKey);
+                    }
+                    
+                    // 如果当前用户被重命名，更新currentUser和关卡进度
+                    if (this.currentUser === oldName) {
+                        this.currentUser = newName;
+                        localStorage.setItem('currentUser', newName);
+                        // 重新加载关卡进度（因为键名已更改）
+                        const tutorialProgress = this.loadTutorialProgress();
+                        this.tutorialUnlockedLevels = tutorialProgress.unlocked || tutorialProgress;
+                        this.tutorialLevelDistances = tutorialProgress.distances || {};
+                    }
                 }
             });
             
-            userItem.appendChild(userBtn);
-            userItem.appendChild(deleteBtn);
-            userList.appendChild(userItem);
-        });
+            // 保存到localStorage
+            this.saveUsers(this.users);
+            this.renderLeaderboard();
+            this.updateProgressBarMarkers();
+        }
     }
 
     deleteUser(userName) {
@@ -453,6 +664,27 @@ class TightropeGame {
             }
         });
 
+        // 编辑按钮
+        const editUsersBtn = document.getElementById('editUsersBtn');
+        if (editUsersBtn) {
+            editUsersBtn.addEventListener('click', () => {
+                this.editMode = true;
+                this.updateEditButtons();
+                this.renderUserList();
+            });
+        }
+
+        // 保存按钮
+        const saveUsersBtn = document.getElementById('saveUsersBtn');
+        if (saveUsersBtn) {
+            saveUsersBtn.addEventListener('click', () => {
+                this.saveUserChanges();
+                this.editMode = false;
+                this.updateEditButtons();
+                this.renderUserList();
+            });
+        }
+
         // 切换玩家按钮
         const switchUserBtn = document.getElementById('switchUserBtn');
         if (switchUserBtn) {
@@ -495,12 +727,16 @@ class TightropeGame {
     // 播放新纪录音效（鼓掌声音）
     playNewRecordSound() {
         try {
+            // 先停止之前的鼓掌音效（如果正在播放）
+            this.stopClapsSound();
             // 创建音频元素播放鼓掌音效
             const clapSound = new Audio('claps.MP3');
             clapSound.volume = 0.7; // 设置音量为70%
             clapSound.play().catch(e => {
                 console.warn('新纪录音效播放失败:', e);
             });
+            // 保存音频对象，以便后续停止
+            this.audio.clapsSound = clapSound;
         } catch (e) {
             console.warn('无法加载新纪录音效文件:', e);
         }
@@ -760,6 +996,7 @@ class TightropeGame {
         hurtAudio.volume = 0.5;
         hurtAudio.preload = 'auto';
         this.audio.hurtSound = hurtAudio;
+
     }
 
     init() {
@@ -800,6 +1037,40 @@ class TightropeGame {
             this.audio.failSound.pause();
             this.audio.failSound.currentTime = 0;
             this.audio.failSound = null;
+        }
+    }
+
+    stopClapsSound() {
+        if (this.audio.clapsSound) {
+            this.audio.clapsSound.pause();
+            this.audio.clapsSound.currentTime = 0;
+            this.audio.clapsSound = null;
+        }
+    }
+
+    stopAllSounds() {
+        // 停止所有音效
+        this.stopBackgroundMusic();
+        this.stopFailSound();
+        this.stopClapsSound();
+        this.stopBirdSound();
+        
+        // 停止其他音效
+        if (this.audio.bombFuse) {
+            this.audio.bombFuse.pause();
+            this.audio.bombFuse.currentTime = 0;
+        }
+        if (this.audio.bombExplosion) {
+            this.audio.bombExplosion.pause();
+            this.audio.bombExplosion.currentTime = 0;
+        }
+        if (this.audio.bulletSound) {
+            this.audio.bulletSound.pause();
+            this.audio.bulletSound.currentTime = 0;
+        }
+        if (this.audio.hurtSound) {
+            this.audio.hurtSound.pause();
+            this.audio.hurtSound.currentTime = 0;
         }
     }
 
@@ -911,13 +1182,57 @@ class TightropeGame {
             }
             if (e.code === 'Space') {
                 e.preventDefault(); // 防止页面滚动
+                
+                // 检查是否在玩家选择界面或新手教学界面，如果是则不响应
+                const startScreen = document.getElementById('startScreen');
+                const tutorialLevelSelect = document.getElementById('tutorialLevelSelect');
+                const tutorialLevelInfo = document.getElementById('tutorialLevelInfo');
+                const tutorialLevelEnd = document.getElementById('tutorialLevelEnd');
+                const userSelection = document.getElementById('userSelection');
+                const gameOver = document.getElementById('gameOver');
+                
+                // 如果玩家选择界面显示，不响应空格键
+                if (userSelection && userSelection.style.display !== 'none') {
+                    return;
+                }
+                // 如果新手教学选择界面显示，不响应空格键
+                if (tutorialLevelSelect && tutorialLevelSelect.style.display !== 'none') {
+                    return;
+                }
+                // 如果关卡说明界面显示，不响应空格键
+                if (tutorialLevelInfo && tutorialLevelInfo.style.display !== 'none') {
+                    return;
+                }
+                // 如果关卡结束界面显示，不响应空格键
+                if (tutorialLevelEnd && tutorialLevelEnd.style.display !== 'none') {
+                    return;
+                }
+                // 如果游戏结束界面显示，不响应空格键
+                if (gameOver && gameOver.style.display !== 'none') {
+                    return;
+                }
+                
                 if (!this.gameRunning) {
                     // 检查是否有用户，如果没有则显示用户选择界面
                     if (!this.currentUser) {
                         this.showUserSelection();
                         return;
                     }
-                this.startGame();
+                    // 检查是否在首页（startScreen显示且startButton显示）
+                    const startButton = document.getElementById('startButton');
+                    // 使用getComputedStyle检查元素是否可见
+                    const startScreenStyle = window.getComputedStyle(startScreen);
+                    const startButtonStyle = startButton ? window.getComputedStyle(startButton) : null;
+                    const isStartScreenVisible = startScreenStyle.display !== 'none' && startScreenStyle.visibility !== 'hidden';
+                    const isStartButtonVisible = startButtonStyle && startButtonStyle.display !== 'none' && startButtonStyle.visibility !== 'hidden';
+                    
+                    if (isStartScreenVisible && isStartButtonVisible) {
+                        // 在首页时，空格键触发高难度模式
+                        this.startHardModeGame();
+                        return;
+                    }
+                    // 不在首页时，正常开始游戏
+                    this.startGame();
                 } else {
                     this.togglePause();
                 }
@@ -928,7 +1243,7 @@ class TightropeGame {
             this.keys[e.code] = false;
         });
 
-        // 开始按钮点击事件
+        // 开始按钮点击事件（新手教学，只能鼠标点击）
         document.getElementById('startButton').addEventListener('click', () => {
             if (!this.gameRunning) {
                 // 检查是否有用户，如果没有则显示用户选择界面
@@ -936,15 +1251,34 @@ class TightropeGame {
                     this.showUserSelection();
                     return;
                 }
-                this.startGame();
+                // 显示关卡选择界面
+                this.showTutorialLevelSelect();
             }
         });
+
+        // 高难度模式按钮点击事件
+        const hardModeButton = document.getElementById('hardModeButton');
+        if (hardModeButton) {
+            hardModeButton.addEventListener('click', () => {
+                if (!this.gameRunning) {
+                    // 检查是否有用户，如果没有则显示用户选择界面
+                    if (!this.currentUser) {
+                        this.showUserSelection();
+                        return;
+                    }
+                    this.startHardModeGame();
+                }
+            });
+        }
 
         // 重新挑战按钮点击事件
         const restartBtn = document.getElementById('restartBtn');
         if (restartBtn) {
             restartBtn.addEventListener('click', () => {
                 if (!this.gameRunning) {
+                    // 停止结算界面的音效
+                    this.stopFailSound();
+                    this.stopClapsSound();
                     // 检查是否有用户，如果没有则显示用户选择界面
                     if (!this.currentUser) {
                         this.showUserSelection();
@@ -965,14 +1299,585 @@ class TightropeGame {
             this.setBackgroundMusicVolume(volume);
             this.updateMuteButton();
         });
+
+        // 用户图标点击事件 - 显示玩家选择界面
+        const helpTrigger = document.getElementById('helpTrigger');
+        if (helpTrigger) {
+            helpTrigger.addEventListener('click', () => {
+                // 如果游戏结束界面显示，先隐藏它（和切换玩家按钮行为一致）
+                const gameOver = document.getElementById('gameOver');
+                if (gameOver && gameOver.style.display !== 'none') {
+                    gameOver.style.display = 'none';
+                }
+                // 显示玩家选择界面
+                document.getElementById('startScreen').style.display = 'flex';
+                this.showUserSelection();
+                this.renderUserList();
+                this.renderLeaderboard();
+            });
+        }
+
+        // 新手教学关卡系统事件监听器
+        this.setupTutorialEventListeners();
+    }
+
+    // 新手教学关卡系统
+    setupTutorialEventListeners() {
+        // 返回按钮
+        const backToStartBtn = document.getElementById('backToStartBtn');
+        if (backToStartBtn) {
+            backToStartBtn.addEventListener('click', () => {
+                this.hideTutorialLevelSelect();
+            });
+        }
+
+        // 关卡选择
+        const levelItems = document.querySelectorAll('.tutorial-level-item');
+        levelItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const level = parseInt(item.getAttribute('data-level'));
+                if (!item.classList.contains('locked')) {
+                    this.showTutorialLevelInfo(level);
+                }
+            });
+        });
+
+        // 开始关卡按钮
+        const startLevelBtn = document.getElementById('startLevelBtn');
+        if (startLevelBtn) {
+            startLevelBtn.addEventListener('click', () => {
+                this.startTutorialLevel(this.currentTutorialLevel);
+            });
+        }
+
+        // 返回关卡选择
+        const backToLevelSelectBtn = document.getElementById('backToLevelSelectBtn');
+        if (backToLevelSelectBtn) {
+            backToLevelSelectBtn.addEventListener('click', () => {
+                this.hideTutorialLevelInfo();
+            });
+        }
+
+        // 返回新手教学
+        const backToTutorialBtn = document.getElementById('backToTutorialBtn');
+        if (backToTutorialBtn) {
+            backToTutorialBtn.addEventListener('click', () => {
+                // 停止结算界面的音效
+                this.stopFailSound();
+                this.stopClapsSound();
+                this.hideTutorialLevelEnd();
+                this.tutorialMode = false; // 重置教程模式
+                this.showTutorialLevelSelect();
+            });
+        }
+
+        // 重新挑战按钮
+        const retryLevelBtn = document.getElementById('retryLevelBtn');
+        if (retryLevelBtn) {
+            retryLevelBtn.addEventListener('click', () => {
+                // 停止结算界面的音效
+                this.stopFailSound();
+                this.stopClapsSound();
+                this.hideTutorialLevelEnd();
+                // 重新开始当前关卡
+                this.startTutorialLevel(this.currentTutorialLevel);
+            });
+        }
+
+        // 下一关按钮
+        const nextLevelBtn = document.getElementById('nextLevelBtn');
+        if (nextLevelBtn) {
+            nextLevelBtn.addEventListener('click', () => {
+                // 停止结算界面的音效
+                this.stopFailSound();
+                this.stopClapsSound();
+                this.hideTutorialLevelEnd();
+                // 关卡4成功时，点击"综合挑战"进入正式游戏
+                if (this.currentTutorialLevel === 4) {
+                    this.tutorialMode = false;
+                    this.currentTutorialLevel = 0;
+                    this.startGame();
+                    return;
+                }
+                const nextLevel = this.currentTutorialLevel + 1;
+                if (nextLevel <= 4 && this.tutorialUnlockedLevels.includes(nextLevel)) {
+                    // 显示下一关的关卡介绍
+                    this.showTutorialLevelInfo(nextLevel);
+                } else {
+                    // 如果下一关未解锁，返回关卡选择界面
+                    this.tutorialMode = false;
+                    this.showTutorialLevelSelect();
+                }
+            });
+        }
+    }
+
+    showTutorialLevelSelect() {
+        document.getElementById('startScreen').style.display = 'none';
+        document.getElementById('tutorialLevelSelect').style.display = 'flex';
+        this.updateTutorialLevelSelect();
+    }
+
+    hideTutorialLevelSelect() {
+        document.getElementById('tutorialLevelSelect').style.display = 'none';
+        document.getElementById('startScreen').style.display = 'flex';
+    }
+
+    updateTutorialLevelSelect() {
+        const levelItems = document.querySelectorAll('.tutorial-level-item');
+        levelItems.forEach(item => {
+            const level = parseInt(item.getAttribute('data-level'));
+            if (this.tutorialUnlockedLevels.includes(level)) {
+                item.classList.remove('locked');
+                const statusEl = item.querySelector('.level-status');
+                if (statusEl) {
+                    // 检查是否已通关（对于关卡3，需要检查completed状态；其他关卡检查距离记录）
+                    const isCompleted = this.tutorialLevelCompletedStatus && this.tutorialLevelCompletedStatus[level];
+                    const bestDistance = this.tutorialLevelDistances && this.tutorialLevelDistances[level];
+                    
+                    if (level === 3) {
+                        // 关卡3：必须真正通关（completed为true）才显示"已通关"
+                        if (isCompleted && bestDistance && bestDistance > 0) {
+                            statusEl.textContent = `已通关 • ${bestDistance}m`;
+                        } else if (bestDistance && bestDistance > 0) {
+                            // 有距离记录但未通关，显示距离但不显示"已通关"
+                            statusEl.textContent = `已尝试 • ${bestDistance}m`;
+                        } else {
+                            statusEl.textContent = '已解锁';
+                        }
+                    } else {
+                        // 其他关卡：有距离记录就显示"已通关"
+                        if (bestDistance && bestDistance > 0) {
+                            statusEl.textContent = `已通关 • ${bestDistance}m`;
+                        } else {
+                            statusEl.textContent = '已解锁';
+                        }
+                    }
+                    statusEl.classList.add('unlocked');
+                }
+            } else {
+                item.classList.add('locked');
+                const statusEl = item.querySelector('.level-status');
+                if (statusEl) {
+                    statusEl.textContent = '🔒 未解锁';
+                    statusEl.classList.remove('unlocked');
+                }
+            }
+        });
+    }
+
+    showTutorialLevelInfo(level) {
+        // 停止结算界面的音效（如果从结算界面进入）
+        this.stopFailSound();
+        this.stopClapsSound();
+        this.currentTutorialLevel = level;
+        document.getElementById('tutorialLevelSelect').style.display = 'none';
+        document.getElementById('tutorialLevelInfo').style.display = 'flex';
+        
+        const titleEl = document.getElementById('levelInfoTitle');
+        const contentEl = document.getElementById('levelInfoContent');
+        
+        if (level === 1) {
+            titleEl.textContent = '关卡1：基础平衡';
+            contentEl.className = 'level-info-content level-info-image';
+            contentEl.innerHTML = `
+                <img src="image/level1.png" alt="关卡1说明" style="width: 100%; height: auto; display: block;">
+            `;
+        } else if (level === 2) {
+            titleEl.textContent = '关卡2：道具收集';
+            contentEl.className = 'level-info-content level-info-image';
+            contentEl.innerHTML = `
+                <img src="image/level2.png" alt="关卡2说明" style="width: 100%; height: auto; display: block;">
+            `;
+        } else if (level === 3) {
+            titleEl.textContent = '关卡3：绝处逢生';
+            contentEl.className = 'level-info-content level-info-image';
+            contentEl.innerHTML = `
+                <img src="image/level3.png" alt="关卡3说明" style="width: 100%; height: auto; display: block;">
+            `;
+        } else if (level === 4) {
+            titleEl.textContent = '关卡4：击退怪鸟';
+            contentEl.className = 'level-info-content level-info-image';
+            contentEl.innerHTML = `
+                <img src="image/level4.png" alt="关卡4说明" style="width: 100%; height: auto; display: block;">
+            `;
+        } else {
+            titleEl.textContent = `关卡${level}`;
+            contentEl.className = 'level-info-content';
+            contentEl.innerHTML = '<p>关卡说明待完善</p>';
+        }
+    }
+
+    hideTutorialLevelInfo() {
+        document.getElementById('tutorialLevelInfo').style.display = 'none';
+        document.getElementById('tutorialLevelSelect').style.display = 'flex';
+    }
+
+    hideTutorialLevelEnd() {
+        document.getElementById('tutorialLevelEnd').style.display = 'none';
+    }
+
+    startTutorialLevel(level) {
+        this.tutorialMode = true;
+        this.currentTutorialLevel = level;
+        this.tutorialPassedDistance = 0;
+        this.tutorialLevelCompleted = false; // 重置完成标志
+        
+        // 停止所有音效（包括结算界面的音效）
+        this.stopFailSound();
+        this.stopClapsSound();
+        this.stopAllSounds();
+        
+        // 隐藏所有界面
+        document.getElementById('tutorialLevelInfo').style.display = 'none';
+        document.getElementById('tutorialLevelSelect').style.display = 'none';
+        document.getElementById('startScreen').style.display = 'none';
+        document.getElementById('gameOver').style.display = 'none';
+        document.getElementById('pauseScreen').style.display = 'none';
+        
+        // 重置游戏状态
+        this.resetGame();
+        
+        // 根据关卡设置特殊规则
+        if (level === 1) {
+            // 关卡1：禁用道具、禁用怪鸟、禁用平衡杆控制
+            this.tutorialLevel1Mode = true;
+            this.tutorialTargetDistance = 200; // 关卡1目标200m
+        } else if (level === 2) {
+            // 关卡2：启用道具系统（仅加速和减速）、禁用怪鸟、启用平衡杆控制
+            this.tutorialLevel1Mode = false;
+            this.tutorialLevel2Mode = true;
+            this.tutorialTargetDistance = 400; // 关卡2目标400m
+            this.tutorialLevel2TimeElapsed = 0; // 重置时间计数器
+            this.tutorialLevel2FailReason = null; // 重置失败原因
+            this.tutorialLevel2TimeSoundPlayed = [false, false, false, false]; // 重置音效播放标志
+        } else if (level === 3) {
+            // 关卡3：启用道具系统（仅平衡、失衡、炸弹）、禁用怪鸟、启用平衡杆控制
+            this.tutorialLevel1Mode = false;
+            this.tutorialLevel2Mode = false;
+            this.tutorialTargetDistance = 400; // 关卡3目标400m
+            this.tutorialLevel3BombSpawned = false; // 重置炸弹生成标志
+            this.tutorialLevel3FailReason = null; // 重置关卡3失败原因
+        } else if (level === 4) {
+            // 关卡4：仅启用怪鸟，禁用道具，启用平衡杆控制
+            this.tutorialLevel1Mode = false;
+            this.tutorialLevel2Mode = false;
+            this.tutorialTargetDistance = 0; // 关卡4没有距离要求
+            this.tutorialLevel4BirdsKilled = 0; // 重置击中计数
+        }
+        
+        // 开始游戏
+        this.gameRunning = true;
+        this.gamePaused = false;
+        this.gameStarted = true;
+        
+        // 开始播放背景音乐
+        setTimeout(() => {
+            this.playBackgroundMusic();
+        }, 100);
+        
+        this.update();
+    }
+
+    checkTutorialLevelComplete() {
+        if (!this.tutorialMode) return false;
+        
+        // 关卡4：检查是否击中6只机械鸟
+        if (this.currentTutorialLevel === 4) {
+            if (this.tutorialLevel4BirdsKilled >= this.tutorialLevel4BirdsTarget && !this.tutorialLevelCompleted) {
+                this.tutorialLevelCompleted = true;
+                // 解锁下一关（如果有）
+                const nextLevel = this.currentTutorialLevel + 1;
+                if (nextLevel <= 4) {
+                    this.unlockTutorialLevel(nextLevel);
+                }
+                // 显示通关提示，但允许继续游戏
+                this.showTutorialLevelCompleteMessage();
+                // 不立即结束，允许继续游戏
+                return false; // 返回false，让游戏继续
+            }
+            return false;
+        }
+        
+        // 关卡2：检查是否达到400m且在时间限制内
+        if (this.currentTutorialLevel === 2) {
+            // 检查是否超时（无论是否通关，时间到了都要结束）
+            if (this.tutorialLevel2TimeElapsed >= this.tutorialLevel2TimeLimit) {
+                // 超时
+                if (!this.tutorialLevelCompleted) {
+                    // 未通关则失败
+                    this.tutorialLevelCompleted = true;
+                    this.tutorialLevel2FailReason = 'timeout'; // 设置失败原因为时间到
+                    this.endTutorialLevel(false); // 失败
+                    return true; // 停止更新
+                } else {
+                    // 已通关，但时间到了也要结束（记录当前距离）
+                    this.endTutorialLevel(true);
+                    return true; // 停止更新
+                }
+            }
+            // 检查是否达到目标距离
+            if (this.distance >= this.tutorialTargetDistance && !this.tutorialLevelCompleted) {
+                this.tutorialLevelCompleted = true;
+                // 解锁下一关
+                const nextLevel = this.currentTutorialLevel + 1;
+                if (nextLevel <= 4) {
+                    this.unlockTutorialLevel(nextLevel);
+                }
+                // 显示通关提示，但允许继续游戏
+                this.showTutorialLevelCompleteMessage();
+                // 不立即结束，允许继续向前走
+                return false; // 返回false，让游戏继续
+            }
+            return false;
+        }
+        
+        // 其他关卡：检查是否达到目标距离（只检查一次，避免重复触发）
+        if (this.distance >= this.tutorialTargetDistance && !this.tutorialLevelCompleted) {
+            // 关卡3：需要同时达到距离目标和绝对平衡目标（15秒）
+            if (this.currentTutorialLevel === 3) {
+                if (this.absoluteBalanceTime >= this.absoluteBalanceTarget) {
+                    // 标记关卡3为已通关
+                    this.tutorialLevelCompletedStatus[3] = true;
+                    this.saveTutorialProgress();
+                    // 标记为已处理，避免重复触发
+                    this.tutorialLevelCompleted = true;
+                    // 解锁下一关
+                    const nextLevel = this.currentTutorialLevel + 1;
+                    if (nextLevel <= 4) {
+                        this.unlockTutorialLevel(nextLevel);
+                    }
+                    // 显示通关提示，但允许继续游戏
+                    this.showTutorialLevelCompleteMessage();
+                    // 不立即结束，允许继续向前走
+                    return false; // 返回false，让游戏继续
+                } else {
+                    // 距离达到但绝对平衡时间不足，直接失败
+                    this.tutorialLevelCompleted = true; // 标记为已处理，避免重复触发
+                    this.tutorialLevel3FailReason = 'balance'; // 设置失败原因为绝对平衡时间不足
+                    this.endTutorialLevel(false); // 显示失败界面
+                    return true; // 停止游戏更新
+                }
+            } else {
+                // 其他关卡：只检查距离
+                // 标记当前关卡为已通关
+                this.tutorialLevelCompletedStatus[this.currentTutorialLevel] = true;
+                this.saveTutorialProgress();
+                // 标记为已处理，避免重复触发
+                this.tutorialLevelCompleted = true;
+                // 解锁下一关
+                const nextLevel = this.currentTutorialLevel + 1;
+                if (nextLevel <= 4) {
+                    this.unlockTutorialLevel(nextLevel);
+                }
+                // 显示通关提示，但允许继续游戏
+                this.showTutorialLevelCompleteMessage();
+                // 不立即结束，允许继续向前走
+                return false; // 返回false，让游戏继续
+            }
+        }
+        return false;
+    }
+
+    showTutorialLevelCompleteMessage() {
+        // 播放通关音效
+        try {
+            // 先停止之前的鼓掌音效（如果正在播放）
+            this.stopClapsSound();
+            const clapSound = new Audio('claps.MP3');
+            clapSound.volume = 0.7;
+            clapSound.play().catch(e => {
+                console.log('音效播放失败:', e);
+            });
+            // 保存音频对象，以便后续停止
+            this.audio.clapsSound = clapSound;
+        } catch (e) {
+            console.log('音效加载失败:', e);
+        }
+
+        const effectText = document.createElement('div');
+        effectText.style.position = 'absolute';
+        effectText.style.left = '50%';
+        effectText.style.top = '30%';
+        effectText.style.transform = 'translateX(-50%)';
+        effectText.style.color = '#FFD700'; // 改为金色
+        effectText.style.fontSize = '42px'; // 减小字体
+        effectText.style.fontWeight = 'bold';
+        effectText.style.pointerEvents = 'none';
+        effectText.style.zIndex = '1000';
+        effectText.style.textAlign = 'center';
+        effectText.style.textShadow = '3px 3px 6px rgba(0,0,0,0.8), 0 0 10px rgba(255,215,0,0.5)'; // 添加金色光晕效果
+        effectText.textContent = '已通关';
+        
+        document.body.appendChild(effectText);
+        
+        let opacity = 1;
+        let y = 30; // 初始Y位置
+        let stayTime = 0; // 停留时间计数器
+        const stayDuration = 90; // 停留90帧（约1.5秒在60fps下）
+        const animate = () => {
+            if (stayTime < stayDuration) {
+                // 停留阶段：保持完全不透明，不移动
+                stayTime++;
+            } else {
+                // 淡出阶段：开始淡出并向上移动
+                opacity -= 0.015; // 减慢消失速度（从0.02改为0.015）
+                y -= 0.3; // 向上移动
+                effectText.style.opacity = opacity;
+                effectText.style.top = y + '%';
+            }
+            
+            if (opacity > 0) {
+                requestAnimationFrame(animate);
+            } else {
+                // 完全消失后移除元素
+                if (document.body.contains(effectText)) {
+                    document.body.removeChild(effectText);
+                }
+            }
+        };
+        animate();
+    }
+
+    endTutorialLevel(success) {
+        this.gameRunning = false;
+        // 注意：不立即关闭tutorialMode，以便返回按钮能正常工作
+        
+        // 关闭所有音效（但不停止炸弹爆炸音效，让它播放完）
+        this.stopBombFuseSound();
+        this.stopBackgroundMusic();
+        // 不调用stopAllSounds()，避免停止炸弹爆炸音效
+        
+        // 隐藏所有其他界面
+        document.getElementById('startScreen').style.display = 'none';
+        document.getElementById('tutorialLevelSelect').style.display = 'none';
+        document.getElementById('tutorialLevelInfo').style.display = 'none';
+        document.getElementById('gameOver').style.display = 'none';
+        document.getElementById('pauseScreen').style.display = 'none';
+        
+        const endScreen = document.getElementById('tutorialLevelEnd');
+        const titleEl = document.getElementById('levelEndTitle');
+        const messageEl = document.getElementById('levelEndMessage');
+        const distanceEl = document.getElementById('levelEndDistance');
+        
+        // 获取按钮元素
+        const nextLevelBtn = document.getElementById('nextLevelBtn');
+        const retryLevelBtn = document.getElementById('retryLevelBtn');
+        
+        if (success) {
+            // 成功时播放通关音效
+            try {
+                // 先停止之前的鼓掌音效（如果正在播放）
+                this.stopClapsSound();
+                const clapSound = new Audio('claps.MP3');
+                clapSound.volume = 0.7;
+                clapSound.play().catch(e => {
+                    console.log('通关音效播放失败:', e);
+                });
+                // 保存音频对象，以便后续停止
+                this.audio.clapsSound = clapSound;
+            } catch (e) {
+                console.log('通关音效加载失败:', e);
+            }
+            
+            titleEl.textContent = '关卡通关！';
+            messageEl.textContent = '恭喜你完成了本关卡！';
+            messageEl.className = 'level-end-message success';
+            
+            // 显示"下一关"按钮，隐藏"重新挑战"按钮
+            if (nextLevelBtn) {
+                nextLevelBtn.style.display = 'block';
+                // 关卡4成功时，按钮文本改为"综合挑战"
+                if (this.currentTutorialLevel === 4) {
+                    nextLevelBtn.textContent = '综合挑战';
+                } else {
+                    nextLevelBtn.textContent = '下一关';
+                }
+            }
+            if (retryLevelBtn) {
+                retryLevelBtn.style.display = 'none';
+            }
+        } else {
+            // 失败时播放失败音效
+            try {
+                // 先停止之前的失败音效（如果正在播放）
+                this.stopFailSound();
+                const failSound = new Audio('fail.MP3');
+                failSound.volume = 0.7;
+                failSound.play().catch(e => {
+                    console.log('失败音效播放失败:', e);
+                });
+                // 保存音频对象，以便后续停止
+                this.audio.failSound = failSound;
+            } catch (e) {
+                console.log('失败音效加载失败:', e);
+            }
+            
+            titleEl.textContent = '关卡失败';
+            if (this.currentTutorialLevel === 2) {
+                // 根据失败原因显示不同的消息
+                if (this.tutorialLevel2FailReason === 'timeout') {
+                    messageEl.textContent = '时间到了！你需要在50秒内完成400米';
+                } else if (this.tutorialLevel2FailReason === 'fall') {
+                    messageEl.textContent = '很遗憾，你未能保持平衡，从钢丝上摔下去了';
+                } else {
+                    messageEl.textContent = '很遗憾，你未能完成本关卡';
+                }
+            } else if (this.currentTutorialLevel === 3) {
+                // 根据失败原因显示不同的消息
+                if (this.tutorialLevel3FailReason === 'balance') {
+                    messageEl.textContent = '你已到达400米，但绝对平衡时间未达到15秒';
+                } else if (this.tutorialLevel3FailReason === 'fall') {
+                    messageEl.textContent = '很遗憾，你未能保持平衡，从钢丝上摔下去了';
+                } else {
+                    messageEl.textContent = '很遗憾，你未能完成本关卡';
+                }
+            } else {
+                messageEl.textContent = '很遗憾，你未能完成本关卡';
+            }
+            messageEl.className = 'level-end-message failed';
+            
+            // 显示"重新挑战"按钮，隐藏"下一关"按钮
+            if (nextLevelBtn) {
+                nextLevelBtn.style.display = 'none';
+                // 重置按钮文本为默认值（失败时隐藏，但重置以备用）
+                nextLevelBtn.textContent = '下一关';
+            }
+            if (retryLevelBtn) {
+                retryLevelBtn.style.display = 'block';
+            }
+        }
+        
+        // 根据关卡显示不同的信息
+        if (this.currentTutorialLevel === 4) {
+            distanceEl.textContent = `你击中了 ${this.tutorialLevel4BirdsKilled} 只机械鸟`;
+        } else {
+            distanceEl.textContent = `你走了 ${Math.floor(this.distance)} 米`;
+        }
+        distanceEl.className = 'level-end-distance';
+        
+        // 保存关卡最远距离（不计入排行榜）
+        if (this.currentTutorialLevel > 0) {
+            this.saveTutorialLevelDistance(this.currentTutorialLevel, this.distance);
+        }
+        
+        // 如果失败，确保不标记为已通关（特别是关卡3）
+        if (!success && this.currentTutorialLevel === 3) {
+            this.tutorialLevelCompletedStatus[3] = false;
+            this.saveTutorialProgress();
+        }
+        
+        endScreen.style.display = 'flex';
     }
 
     startGame() {
         this.gameRunning = true;
         this.gamePaused = false;
         this.gameStarted = true;
-        // 停止失败音效（如果正在播放）
+        // 停止所有音效（包括结算界面的音效）
         this.stopFailSound();
+        this.stopClapsSound();
+        this.stopAllSounds();
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('gameOver').style.display = 'none';
         document.getElementById('pauseScreen').style.display = 'none';
@@ -983,6 +1888,11 @@ class TightropeGame {
             this.playBackgroundMusic();
         }, 100);
         this.update();
+    }
+
+    startHardModeGame() {
+        // 高难度模式：直接开始游戏（可以在这里添加高难度逻辑）
+        this.startGame();
     }
 
     togglePause() {
@@ -998,8 +1908,10 @@ class TightropeGame {
     restartGame() {
         this.gameRunning = true;
         this.gamePaused = false;
-        // 停止失败音效（如果正在播放）
+        // 停止所有音效（包括结算界面的音效）
         this.stopFailSound();
+        this.stopClapsSound();
+        this.stopAllSounds();
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('gameOver').style.display = 'none';
         document.getElementById('pauseScreen').style.display = 'none';
@@ -1042,7 +1954,12 @@ class TightropeGame {
         this.mechanicalBird.active = false;
         this.mechanicalBird.state = 'idle';
         this.mechanicalBird.spawnTimer = 0;
-        this.mechanicalBird.spawnInterval = 600 + Math.floor(Math.random() * 300);
+        // 关卡4：第一只在2-4秒后生成（120-240帧随机），之后在被击中或攻击玩家后2-4秒生成
+        if (this.tutorialMode && this.currentTutorialLevel === 4) {
+            this.mechanicalBird.spawnInterval = 120 + Math.floor(Math.random() * 120); // 2-4秒随机
+        } else {
+            this.mechanicalBird.spawnInterval = 600 + Math.floor(Math.random() * 300);
+        }
         this.playerBullets = [];
         // 重置垂死挣扎/炸弹救援状态
         this.dangerZoneTimer = 0;
@@ -1056,6 +1973,23 @@ class TightropeGame {
         // 重置炸弹计数并停止引线音效
         this.activeBombCount = 0;
         this.stopBombFuseSound();
+        // 重置关卡2的时间计数和失败原因
+        if (this.tutorialMode && this.currentTutorialLevel === 2) {
+            this.tutorialLevel2TimeElapsed = 0;
+            this.tutorialLevel2FailReason = null;
+            this.tutorialLevel2TimeSoundPlayed = [false, false, false, false]; // 重置音效播放标志
+        }
+        // 重置关卡3的炸弹生成标志和失败原因
+        if (this.tutorialMode && this.currentTutorialLevel === 3) {
+            this.tutorialLevel3BombSpawned = false;
+            this.tutorialLevel3FailReason = null;
+        }
+        // 重置关卡4的击中计数
+        if (this.tutorialMode && this.currentTutorialLevel === 4) {
+            this.tutorialLevel4BirdsKilled = 0;
+        }
+        // 重置绝对平衡计时
+        this.absoluteBalanceTime = 0;
         // 重新加载当前用户的最高分
         if (this.currentUser) {
             const user = this.users.find(u => u.name === this.currentUser);
@@ -1095,8 +2029,38 @@ class TightropeGame {
             this.updateBackground();
             this.updateParticles();
             this.updateLandscape();
-            this.updatePowerUps();
-            this.updateMechanicalBird();
+            
+            // 新手教学模式：根据关卡禁用某些功能
+            if (this.tutorialMode) {
+                // 关卡1禁用道具和怪鸟
+                if (this.currentTutorialLevel === 1) {
+                    // 不更新道具和怪鸟
+                } else if (this.currentTutorialLevel === 2) {
+                    // 关卡2：启用道具系统（仅加速和减速），禁用怪鸟
+                    this.updatePowerUps();
+                    // 更新时间计数
+                    this.tutorialLevel2TimeElapsed++;
+                } else if (this.currentTutorialLevel === 3) {
+                    // 关卡3：启用道具系统（仅平衡、失衡、炸弹），禁用怪鸟
+                    this.updatePowerUps();
+                } else if (this.currentTutorialLevel === 4) {
+                    // 关卡4：启用怪鸟，禁用道具
+                    this.updateMechanicalBird();
+                } else {
+                    // 其他关卡：正常更新
+                    this.updatePowerUps();
+                    this.updateMechanicalBird();
+                }
+                // 检查关卡是否完成
+                if (this.checkTutorialLevelComplete()) {
+                    return; // 关卡完成，停止更新
+                }
+            } else {
+                // 正常模式：更新所有功能
+                this.updatePowerUps();
+                this.updateMechanicalBird();
+            }
+            
             this.updatePlayerBullets();
             // this.updateHealthRegen(); // 回血机制已禁用
             this.checkGameOver();
@@ -1279,6 +2243,8 @@ class TightropeGame {
         this.player.swaySpeed *= damping;
         this.player.sway += this.player.swaySpeed;
         this.player.sway = Math.max(-90, Math.min(90, this.player.sway));
+        
+        // 绝对平衡计时在updatePowerUps中更新（累计平衡道具的持续时间）
         this.player.x = this.balancePivot.x;
         this.player.y = this.balancePivot.y;
     }
@@ -1490,6 +2456,10 @@ class TightropeGame {
         }
         for (let i = this.activePowerUps.length - 1; i >= 0; i--) {
             const powerUp = this.activePowerUps[i];
+            // 如果是平衡道具，累计绝对平衡时间
+            if (powerUp.type === 'balance') {
+                this.absoluteBalanceTime++;
+            }
             powerUp.duration--;
             if (powerUp.duration <= 0) {
                 this.deactivatePowerUp(powerUp);
@@ -1505,22 +2475,14 @@ class TightropeGame {
         // 全局冷却：只在正常游戏状态且没有炸弹救援时计时
         if (!bird.active) {
             bird.spawnTimer++;
-            // 10-15 秒随机出现一次
-            if (bird.spawnTimer >= bird.spawnInterval) {
-                const absSway = Math.abs(this.player.sway);
-                // 仅在角色倾斜 15-30 度时才有机会出现
-                if (absSway >= 15 && absSway <= 30) {
+            // 关卡4：被击中或攻击玩家后2秒生成下一只（第一只在游戏开始2秒后）
+            if (this.tutorialMode && this.currentTutorialLevel === 4) {
+                if (bird.spawnTimer >= bird.spawnInterval) {
                     const centerX = this.width / 2;
-                    // 鸟整体再向外20像素、向上50像素
-                    let centerY = this.balancePivot.y - 350 - 50; // 角色上方再抬高50像素
-                    // 当距离超过1000米时，在垂直位置上下50像素范围内随机
-                    if (this.distance > 1000) {
-                        const randomOffset = (Math.random() - 0.5) * 100; // -50 到 +50 像素
-                        centerY += randomOffset;
-                    }
-                    const swaySign = this.player.sway >= 0 ? 1 : -1;
-                    const side = swaySign >= 0 ? 'right' : 'left';
-                    const offset = 250 + 20; // 再向外20像素 => 270
+                    let centerY = this.balancePivot.y - 350 - 50; // 角色上方
+                    // 随机选择左右侧
+                    const side = Math.random() < 0.5 ? 'right' : 'left';
+                    const offset = 250 + 20; // 270像素
                     bird.side = side;
                     bird.targetX = centerX + (side === 'right' ? offset : -offset);
                     bird.targetY = centerY;
@@ -1534,13 +2496,48 @@ class TightropeGame {
                     bird.deadTimer = 0;
                     bird.active = true;
                     bird.spawnTimer = 0;
-                    bird.spawnInterval = 600 + Math.floor(Math.random() * 300); // 10-15 秒
+                    // 注意：spawnInterval会在被击中或攻击玩家时设置为120帧（2秒）
                     // 播放鸟出现音效
                     this.playBirdSound();
-                } else {
-                    // 未满足角度条件，下次再尝试
-                    bird.spawnTimer = 0;
-                    bird.spawnInterval = 300 + Math.floor(Math.random() * 300); // 5-10 秒后再试
+                }
+            } else {
+                // 正常模式：10-15 秒随机出现一次
+                if (bird.spawnTimer >= bird.spawnInterval) {
+                    const absSway = Math.abs(this.player.sway);
+                    // 仅在角色倾斜 15-30 度时才有机会出现
+                    if (absSway >= 15 && absSway <= 30) {
+                        const centerX = this.width / 2;
+                        // 鸟整体再向外20像素、向上50像素
+                        let centerY = this.balancePivot.y - 350 - 50; // 角色上方再抬高50像素
+                        // 当距离超过1000米时，在垂直位置上下50像素范围内随机
+                        if (this.distance > 1000) {
+                            const randomOffset = (Math.random() - 0.5) * 100; // -50 到 +50 像素
+                            centerY += randomOffset;
+                        }
+                        const swaySign = this.player.sway >= 0 ? 1 : -1;
+                        const side = swaySign >= 0 ? 'right' : 'left';
+                        const offset = 250 + 20; // 再向外20像素 => 270
+                        bird.side = side;
+                        bird.targetX = centerX + (side === 'right' ? offset : -offset);
+                        bird.targetY = centerY;
+                        // 从画面外飞入
+                        bird.x = side === 'right' ? this.width + 80 : -80;
+                        bird.y = centerY;
+                        bird.state = 'enter';
+                        bird.frameIndex = 0;
+                        bird.frameTimer = 0;
+                        bird.stayTimer = 0;
+                        bird.deadTimer = 0;
+                        bird.active = true;
+                        bird.spawnTimer = 0;
+                        bird.spawnInterval = 600 + Math.floor(Math.random() * 300); // 10-15 秒
+                        // 播放鸟出现音效
+                        this.playBirdSound();
+                    } else {
+                        // 未满足角度条件，下次再尝试
+                        bird.spawnTimer = 0;
+                        bird.spawnInterval = 300 + Math.floor(Math.random() * 300); // 5-10 秒后再试
+                    }
                 }
             }
             return;
@@ -1591,19 +2588,29 @@ class TightropeGame {
                 bird.active = false;
                 bird.state = 'idle';
                 bird.spawnTimer = 0;
-                bird.spawnInterval = 600 + Math.floor(Math.random() * 300); // 10-15 秒后再次尝试
+                // 关卡4：攻击玩家后2-4秒随机生成下一只（120-240帧）
+                if (this.tutorialMode && this.currentTutorialLevel === 4) {
+                    bird.spawnInterval = 120 + Math.floor(Math.random() * 120); // 2-4秒随机
+                } else {
+                    bird.spawnInterval = 600 + Math.floor(Math.random() * 300); // 10-15 秒后再次尝试
+                }
             } else {
                 bird.x += (dx / dist) * speed;
                 bird.y += (dy / dist) * speed;
             }
         } else if (bird.state === 'dead') {
             bird.deadTimer++;
-            // 击中仅做“被击中”表达，快速消失：约0.2秒
+            // 击中仅做"被击中"表达，快速消失：约0.2秒
             if (bird.deadTimer >= 12) { // 12帧 ≈ 0.2秒
                 bird.active = false;
                 bird.state = 'idle';
                 bird.spawnTimer = 0;
-                bird.spawnInterval = 600 + Math.floor(Math.random() * 300);
+                // 关卡4：被击中后2-4秒随机生成下一只（120-240帧）
+                if (this.tutorialMode && this.currentTutorialLevel === 4) {
+                    bird.spawnInterval = 120 + Math.floor(Math.random() * 120); // 2-4秒随机
+                } else {
+                    bird.spawnInterval = 600 + Math.floor(Math.random() * 300);
+                }
             }
         }
     }
@@ -1633,6 +2640,10 @@ class TightropeGame {
                     this.playerBullets.splice(i, 1);
                     bird.state = 'dead';
                     bird.deadTimer = 0;
+                    // 关卡4：增加击中计数
+                    if (this.tutorialMode && this.currentTutorialLevel === 4) {
+                        this.tutorialLevel4BirdsKilled++;
+                    }
                     // 停止鸟出现音效
                     this.stopBirdSound();
                     return;
@@ -1667,23 +2678,32 @@ class TightropeGame {
     }
 
     updateBalanceRod() {
-        // 根据距离动态计算平衡杆伸缩速度（整体提升1.2倍）
+        // 关卡1：禁用平衡杆控制
+        if (this.tutorialMode && this.currentTutorialLevel === 1) {
+            return;
+        }
+        // 关卡2：使用固定速度，便于玩家操作
         let currentExtendSpeed;
-        if (this.distance < 250) {
-            // 0-250m：速度从1.7到2（提升1.2倍）
-            const progress = this.distance / 250;
-            currentExtendSpeed = (1.7 + progress * 0.3) * 1.2; // 从2.04增加到2.4
-        } else if (this.distance < 2000) {
-            // 250-2000m：速度从2到3（提升1.2倍）
-            const progress = (this.distance - 250) / (2000 - 250);
-            currentExtendSpeed = (2 + progress * 1) * 1.2; // 从2.4增加到3.6
-        } else if (this.distance < 2500) {
-            // 2000-2500m：速度从3到5（提升1.2倍后继续增加到8）
-            const progress = (this.distance - 2000) / (2500 - 2000);
-            currentExtendSpeed = 3.6 + progress * 4.4; // 从3.6增加到8
+        if (this.tutorialMode && this.currentTutorialLevel === 2) {
+            currentExtendSpeed = 2.5; // 固定速度
         } else {
-            // 2500m以上：保持速度8（从6提升到8）
-            currentExtendSpeed = 8;
+            // 根据距离动态计算平衡杆伸缩速度（整体提升1.2倍）
+            if (this.distance < 250) {
+                // 0-250m：速度从1.7到2（提升1.2倍）
+                const progress = this.distance / 250;
+                currentExtendSpeed = (1.7 + progress * 0.3) * 1.2; // 从2.04增加到2.4
+            } else if (this.distance < 2000) {
+                // 250-2000m：速度从2到3（提升1.2倍）
+                const progress = (this.distance - 250) / (2000 - 250);
+                currentExtendSpeed = (2 + progress * 1) * 1.2; // 从2.4增加到3.6
+            } else if (this.distance < 2500) {
+                // 2000-2500m：速度从3到5（提升1.2倍后继续增加到8）
+                const progress = (this.distance - 2000) / (2500 - 2000);
+                currentExtendSpeed = 3.6 + progress * 4.4; // 从3.6增加到8
+            } else {
+                // 2500m以上：保持速度8（从6提升到8）
+                currentExtendSpeed = 8;
+            }
         }
         
         if (this.keys['KeyZ'] || this.keys['KeyX']) {
@@ -1767,19 +2787,59 @@ class TightropeGame {
 
 
     spawnPowerUp() {
-        // 调整道具概率：炸弹频率降低（约 1/12）
-        const types = [
-            'speed', 'balance', 'slow', 'unbalance',
-            'speed', 'slow', 'unbalance',
-            'speed', 'slow', 'balance', 'unbalance',
-            'explosion'
-        ];
-        const type = types[Math.floor(Math.random() * types.length)];
+        // 关卡4：不生成任何道具
+        if (this.tutorialMode && this.currentTutorialLevel === 4) {
+            return;
+        }
+        let type;
+        // 关卡2：只生成加速和减速道具
+        if (this.tutorialMode && this.currentTutorialLevel === 2) {
+            const types = ['speed', 'slow'];
+            type = types[Math.floor(Math.random() * types.length)];
+        } else if (this.tutorialMode && this.currentTutorialLevel === 3) {
+            // 关卡3：只生成平衡、失衡、炸弹道具
+            // 如果还没生成过炸弹道具，强制生成炸弹
+            if (!this.tutorialLevel3BombSpawned) {
+                type = 'explosion';
+                this.tutorialLevel3BombSpawned = true;
+            } else {
+                // 炸弹出现频率：平衡、失衡、炸弹各占33.3%
+                const rand = Math.random();
+                if (rand < 0.333) {
+                    type = 'balance';
+                } else if (rand < 0.666) {
+                    type = 'unbalance';
+                } else {
+                    type = 'explosion';
+                }
+            }
+        } else {
+            // 正常模式：调整道具概率：炸弹频率降低（约 1/12）
+            const types = [
+                'speed', 'balance', 'slow', 'unbalance',
+                'speed', 'slow', 'unbalance',
+                'speed', 'slow', 'balance', 'unbalance',
+                'explosion'
+            ];
+            type = types[Math.floor(Math.random() * types.length)];
+        }
         const tightropeX = this.balancePivot.x;
-        const minDistance = this.balanceRod.minLength + 50; // 平衡杆最短+30像素
+        const minDistance = this.balanceRod.minLength + 50; // 平衡杆最短+50像素
         const maxDistance = this.balanceRod.maxLength; // 平衡杆最长
         const side = Math.random() < 0.5 ? -1 : 1;
-        const distance = minDistance + Math.random() * (maxDistance - minDistance);
+        let distance;
+        // 关卡3的炸弹生成位置逻辑
+        if (this.tutorialMode && this.currentTutorialLevel === 3 && type === 'explosion') {
+            // 如果这是第一个炸弹（生成前activeBombCount为0），生成在最内侧
+            if (this.activeBombCount === 0) {
+                distance = minDistance; // 最内侧（最小距离）
+            } else {
+                // 后续炸弹正常随机生成
+                distance = minDistance + Math.random() * (maxDistance - minDistance);
+            }
+        } else {
+            distance = minDistance + Math.random() * (maxDistance - minDistance);
+        }
         const x = tightropeX + (side * distance);
         this.powerUps.push({ x, y: -50, type, size: 20, collected: false });
         // 如果是炸弹道具，增加计数，并在第一个炸弹出现时播放引线音效
@@ -2161,7 +3221,20 @@ class TightropeGame {
         this.bombRescue.active = false;
         this.bombRescue.timer = 0;
         this.playBombExplosionSound();
-        this.gameOver();
+        // 延迟调用结束界面，确保炸弹音效能播放
+        setTimeout(() => {
+            // 教程模式下使用新手关卡结束界面，否则使用正常游戏结束界面
+            if (this.tutorialMode) {
+                // 如果已经通关，即使炸弹爆炸也显示成功
+                if (this.tutorialLevelCompleted) {
+                    this.endTutorialLevel(true);
+                } else {
+                    this.endTutorialLevel(false);
+                }
+            } else {
+                this.gameOver();
+            }
+        }, 100); // 延迟100ms，让音效开始播放
     }
 
     // 绝处逢生视觉反馈：金色文字，上浮+透明度降低，和吃到好道具动画一致，但整体上移200像素
@@ -2608,6 +3681,26 @@ class TightropeGame {
 
 
     checkGameOver() {
+        // 新手教学模式：使用不同的失败检测
+        if (this.tutorialMode) {
+            // 教程模式下，失败条件仍然是60度
+            if (Math.abs(this.player.sway) >= 60) {
+                // 如果已经通关（达到目标距离），即使掉落也显示成功
+                if (this.tutorialLevelCompleted) {
+                    this.endTutorialLevel(true);
+                } else {
+                    // 设置失败原因为坠落
+                    if (this.currentTutorialLevel === 2) {
+                        this.tutorialLevel2FailReason = 'fall';
+                    } else if (this.currentTutorialLevel === 3) {
+                        this.tutorialLevel3FailReason = 'fall';
+                    }
+                    this.endTutorialLevel(false);
+                }
+                return;
+            }
+            return;
+        }
         const absSway = Math.abs(this.player.sway);
         
         // 如果超过死亡阈值，立即死亡
@@ -2633,6 +3726,8 @@ class TightropeGame {
         this.gameRunning = false;
         // 确保任意死亡（包括角度过大）时，立即停止炸弹引线音效
         this.stopBombFuseSound();
+        // 停止所有游戏内音效
+        this.stopAllSounds();
         const finalScore = Math.floor(this.distance);
         document.getElementById('finalDistance').textContent = finalScore;
         
@@ -2711,19 +3806,84 @@ class TightropeGame {
 
     updateUI() {
         const currentDistance = Math.floor(this.distance);
-        const maxDistance = 6666;
+        // 教程模式下根据关卡设置最大距离
+        let maxDistance = 6666;
+        if (this.tutorialMode) {
+            if (this.currentTutorialLevel === 2) {
+                maxDistance = 400; // 关卡2目标400m
+            } else if (this.currentTutorialLevel === 3) {
+                maxDistance = 400; // 关卡3目标400m
+            } else if (this.currentTutorialLevel === 4) {
+                maxDistance = 6666; // 关卡4没有距离要求，使用默认值
+            } else {
+                maxDistance = 200; // 其他关卡200m
+            }
+        }
         const progressPercentage = Math.min((currentDistance / maxDistance) * 100, 100);
         
-        // 更新进度条
-        document.getElementById('progressFill').style.width = progressPercentage + '%';
+        // 更新进度条（关卡4不显示进度条）
+        if (this.tutorialMode && this.currentTutorialLevel === 4) {
+            document.getElementById('progressFill').style.width = '0%';
+        } else {
+            document.getElementById('progressFill').style.width = progressPercentage + '%';
+        }
         document.getElementById('currentDistanceNumber').textContent = currentDistance;
+        
+        // 更新最大距离显示（关卡4不显示）
+        const maxDistanceEl = document.getElementById('maxDistance');
+        if (maxDistanceEl) {
+            if (this.tutorialMode && this.currentTutorialLevel === 4) {
+                maxDistanceEl.style.display = 'none';
+            } else {
+                maxDistanceEl.style.display = 'block';
+                maxDistanceEl.textContent = maxDistance + 'm';
+            }
+        }
+        
+        // 更新绝对平衡时间显示（只在关卡3显示，显示在距离下方，字体扩大3倍）
+        // 关卡4：显示击中数
+        const absoluteBalanceTimeEl = document.getElementById('absoluteBalanceTime');
+        if (absoluteBalanceTimeEl) {
+            if (this.tutorialMode && this.currentTutorialLevel === 3) {
+                const balanceSeconds = (this.absoluteBalanceTime / 60).toFixed(1); // 转换为秒，保留1位小数
+                const targetSeconds = (this.absoluteBalanceTarget / 60).toFixed(1); // 目标时间
+                // 更新数字部分，S单位在HTML中已定义
+                const sSpan = absoluteBalanceTimeEl.querySelector('span');
+                if (sSpan) {
+                    // 如果已有S的span，只更新前面的文本内容
+                    const textContent = absoluteBalanceTimeEl.textContent || '';
+                    const currentText = textContent.replace('S', '').trim();
+                    absoluteBalanceTimeEl.innerHTML = `${balanceSeconds}/${targetSeconds}<span style="font-size: 24px; margin-left: 2px;">S</span>`;
+                } else {
+                    // 如果没有span，创建新的结构
+                    absoluteBalanceTimeEl.innerHTML = `${balanceSeconds}/${targetSeconds}<span style="font-size: 24px; margin-left: 2px;">S</span>`;
+                }
+                absoluteBalanceTimeEl.style.display = 'flex';
+            } else if (this.tutorialMode && this.currentTutorialLevel === 4) {
+                // 关卡4：显示击中数
+                absoluteBalanceTimeEl.innerHTML = `${this.tutorialLevel4BirdsKilled}/${this.tutorialLevel4BirdsTarget}`;
+                absoluteBalanceTimeEl.style.display = 'flex';
+            } else {
+                absoluteBalanceTimeEl.style.display = 'none';
+            }
+        }
         
         // 更新所有玩家的标记
         this.updateProgressBarMarkers();
     }
 
     updateProgressBarMarkers() {
-        const maxDistance = 6666;
+        // 教程模式下根据关卡设置最大距离
+        let maxDistance = 6666;
+        if (this.tutorialMode) {
+            if (this.currentTutorialLevel === 2) {
+                maxDistance = 400; // 关卡2目标400m
+            } else if (this.currentTutorialLevel === 3) {
+                maxDistance = 400; // 关卡3目标400m
+            } else {
+                maxDistance = 200; // 其他关卡200m
+            }
+        }
         const progressBar = document.getElementById('progressBar');
         
         // 清除旧的标记（除了bestDistanceLine和bestDistanceLabel）
@@ -2800,7 +3960,118 @@ class TightropeGame {
         this.drawHeartLives(); // 绘制心形生命值
         this.drawDamageFlash();
         this.drawBombRescueOverlay(); // 炸弹救援提示与时间条
+        this.drawTutorialLevel2Timer(); // 关卡2时间倒计时
     }
+
+    drawTutorialLevel2Timer() {
+        // 只在关卡2显示时间倒计时
+        if (!this.tutorialMode || this.currentTutorialLevel !== 2) return;
+        
+        const timeRemaining = Math.max(0, this.tutorialLevel2TimeLimit - this.tutorialLevel2TimeElapsed);
+        const secondsRemaining = Math.ceil(timeRemaining / 60);
+        const minutes = Math.floor(secondsRemaining / 60);
+        const seconds = secondsRemaining % 60;
+        const timeText = `⏰ ${minutes}:${seconds.toString().padStart(2, '0')}`;
+        
+        const centerX = this.width / 2;
+        const y = 40;
+        const rectHeight = 35; // 减小矩形高度（从50改为35）
+        const rectWidth = 160; // 增加宽度以容纳时钟图标
+        
+        // 绘制背景框
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        this.ctx.fillRect(centerX - rectWidth / 2, y - rectHeight / 2, rectWidth, rectHeight);
+        this.ctx.strokeStyle = timeRemaining <= 600 ? '#FF0000' : '#FFD700'; // 剩余10秒内变红
+        this.ctx.lineWidth = 3;
+        this.ctx.strokeRect(centerX - rectWidth / 2, y - rectHeight / 2, rectWidth, rectHeight);
+        
+        // 绘制时间文字（包含时钟图标）
+        this.ctx.fillStyle = timeRemaining <= 600 ? '#FF0000' : '#FFFFFF';
+        this.ctx.font = 'bold 24px Arial'; // 减小字体（从32px改为24px）
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(timeText, centerX, y);
+
+        // 倒计时音效：在剩余4秒、3秒、2秒、1秒时分别播放单音（精确到帧）
+        if (timeRemaining === 240 && !this.tutorialLevel2TimeSoundPlayed[0]) {
+            // 剩余正好4秒时播放第一个音
+            this.tutorialLevel2TimeSoundPlayed[0] = true;
+            this.playCountdownBeep(600);
+        } else if (timeRemaining === 180 && !this.tutorialLevel2TimeSoundPlayed[1]) {
+            // 剩余正好3秒时播放第二个音
+            this.tutorialLevel2TimeSoundPlayed[1] = true;
+            this.playCountdownBeep(600);
+        } else if (timeRemaining === 120 && !this.tutorialLevel2TimeSoundPlayed[2]) {
+            // 剩余正好2秒时播放第三个音
+            this.tutorialLevel2TimeSoundPlayed[2] = true;
+            this.playCountdownBeep(600);
+        } else if (timeRemaining === 60 && !this.tutorialLevel2TimeSoundPlayed[3]) {
+            // 剩余正好1秒时播放第四个音（高音）
+            this.tutorialLevel2TimeSoundPlayed[3] = true;
+            this.playCountdownBeep(1000, 0.3);
+        }
+
+        // 最后5秒时画面边沿出现红色警示（300帧 = 5秒）
+        if (timeRemaining <= 300) {
+            const edgeWidth = 37.5; // 边沿宽度（75的一半 = 37.5）
+            const maxAlpha = Math.min(0.3, (300 - timeRemaining) / 300 * 0.3); // 逐渐增强，最大透明度0.3
+            
+            // 绘制上边沿（边沿实，中心虚）
+            const topGradient = this.ctx.createLinearGradient(0, 0, 0, edgeWidth);
+            topGradient.addColorStop(0, `rgba(255, 0, 0, ${maxAlpha})`); // 画面边沿（y=0）实
+            topGradient.addColorStop(1, 'rgba(255, 0, 0, 0)'); // 靠近中心（y=edgeWidth）虚（透明）
+            this.ctx.fillStyle = topGradient;
+            this.ctx.fillRect(0, 0, this.width, edgeWidth);
+            
+            // 绘制下边沿（边沿实，中心虚）
+            const bottomGradient = this.ctx.createLinearGradient(0, this.height - edgeWidth, 0, this.height);
+            bottomGradient.addColorStop(1, `rgba(255, 0, 0, ${maxAlpha})`); // 画面边沿（y=this.height）实
+            bottomGradient.addColorStop(0, 'rgba(255, 0, 0, 0)'); // 靠近中心（y=this.height-edgeWidth）虚（透明）
+            this.ctx.fillStyle = bottomGradient;
+            this.ctx.fillRect(0, this.height - edgeWidth, this.width, edgeWidth);
+            
+            // 绘制左边沿（边沿实，中心虚）
+            const leftGradient = this.ctx.createLinearGradient(0, 0, edgeWidth, 0);
+            leftGradient.addColorStop(0, `rgba(255, 0, 0, ${maxAlpha})`); // 画面边沿（x=0）实
+            leftGradient.addColorStop(1, 'rgba(255, 0, 0, 0)'); // 靠近中心（x=edgeWidth）虚（透明）
+            this.ctx.fillStyle = leftGradient;
+            this.ctx.fillRect(0, 0, edgeWidth, this.height);
+            
+            // 绘制右边沿（边沿实，中心虚）
+            const rightGradient = this.ctx.createLinearGradient(this.width - edgeWidth, 0, this.width, 0);
+            rightGradient.addColorStop(1, `rgba(255, 0, 0, ${maxAlpha})`); // 画面边沿（x=this.width）实
+            rightGradient.addColorStop(0, 'rgba(255, 0, 0, 0)'); // 靠近中心（x=this.width-edgeWidth）虚（透明）
+            this.ctx.fillStyle = rightGradient;
+            this.ctx.fillRect(this.width - edgeWidth, 0, edgeWidth, this.height);
+        }
+    }
+
+    playCountdownBeep(frequency, duration = 0.2) {
+        // 播放单个倒计时音效：单音（固定音量，不上升下降）
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const masterGain = audioContext.createGain();
+            masterGain.connect(audioContext.destination);
+            masterGain.gain.value = 0.7;
+
+            const oscillator = audioContext.createOscillator();
+            const beepGain = audioContext.createGain();
+            
+            oscillator.connect(beepGain);
+            beepGain.connect(masterGain);
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            
+            // 固定音量，不上升下降
+            beepGain.gain.setValueAtTime(0.7, audioContext.currentTime);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        } catch (e) {
+            console.warn('生成倒计时音效失败:', e);
+        }
+    }
+
 
     drawBackground() {
         // 画布内完全移除渐变；只绘制素材图层：先 bg（清晰），再 gs

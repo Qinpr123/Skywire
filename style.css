@@ -361,8 +361,8 @@ body {
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 24px;
-    font-weight: bold;
+    font-size: 28px;
+    font-weight: normal;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
     transition: all 0.3s ease;
 }
@@ -373,27 +373,6 @@ body {
     transform: scale(1.1);
 }
 
-#instructions {
-    position: absolute;
-    bottom: 0;
-    right: -20px;
-    color: white;
-    font-size: 19.5px;
-    text-shadow: 3px 3px 6px rgba(0,0,0,0.7);
-    z-index: 30;
-    text-align: left;
-    min-width: 270px;
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.3s ease;
-    transform: translateY(10px);
-}
-
-#helpTrigger:hover #instructions {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
-}
 
 
 .instruction-item {
@@ -467,6 +446,7 @@ body {
 
 /* 当显示用户选择界面时，改为居中显示 */
 #userSelection[style*="display: block"] ~ #startButton,
+#userSelection[style*="display: block"] ~ #hardModeButton,
 #startScreen:has(#userSelection[style*="display: block"]) {
     justify-content: center;
     padding: 40px;
@@ -494,11 +474,78 @@ body {
 }
 
 #userSelection h3 {
-    margin: 0 0 20px 0;
+    margin: 0;
     font-size: 1.8em;
     text-align: center;
     color: #FFD700;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+/* 编辑和保存按钮 */
+.edit-btn, .save-btn {
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+    background: rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    color: #FFD700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.edit-btn:hover, .save-btn:hover {
+    background: rgba(255,215,0,0.2);
+    border-color: #FFD700;
+    transform: scale(1.1);
+}
+
+.edit-btn svg, .save-btn svg {
+    width: 100%;
+    height: 100%;
+    stroke: currentColor;
+}
+
+.save-btn {
+    background: rgba(76,175,80,0.2);
+    border-color: rgba(76,175,80,0.4);
+    color: #4CAF50;
+}
+
+.save-btn:hover {
+    background: rgba(76,175,80,0.4);
+    border-color: #4CAF50;
+}
+
+/* 用户名称输入框 */
+.user-name-wrapper {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.user-name-input {
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,215,0,0.3);
+    border-radius: 6px;
+    color: white;
+    font-size: 1.2em;
+    font-weight: bold;
+    padding: 4px 8px;
+    outline: none;
+    width: 100%;
+    max-width: 200px;
+    transition: all 0.3s ease;
+}
+
+.user-name-input:focus {
+    border-color: #FFD700;
+    background: rgba(255,255,255,0.2);
+    box-shadow: 0 0 8px rgba(255,215,0,0.3);
 }
 
 #userList {
@@ -557,7 +604,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 1.1em;
+    font-size: 1.3em;
 }
 
 .user-btn:hover {
@@ -594,7 +641,7 @@ body {
     border: 2px solid rgba(255,255,255,0.2);
     border-radius: 8px;
     color: white;
-    font-size: 1em;
+    font-size: 1.2em;
     outline: none;
 }
 
@@ -616,7 +663,7 @@ body {
     font-weight: bold;
     cursor: pointer;
     transition: all 0.3s ease;
-    font-size: 1em;
+    font-size: 1.2em;
 }
 
 #createUserBtn:hover {
@@ -633,9 +680,18 @@ body {
 
 #leaderboard h4 {
     margin: 0 0 15px 0;
-    font-size: 1.3em;
+    font-size: 1.6em; /* 副标题 */
     color: #FFD700;
     text-align: center;
+}
+
+/* 统一文字大小层级 */
+.user-name, .rank-name {
+    font-size: 1.3em; /* 正文 */
+}
+
+.user-score, .rank-score {
+    font-size: 1.1em; /* 辅助文字 */
 }
 
 #leaderboardList {
@@ -685,7 +741,7 @@ body {
 /* 开始按钮样式 */
 #startButton {
     position: relative;
-    width: 20em;
+    width: 16em; /* 从20em缩短为80% (20em * 0.8 = 16em) */
     height: 5em;
     background: linear-gradient(145deg, #ffffff, #f0f0f0);
     border: 4px solid #000000;
@@ -698,6 +754,7 @@ body {
     transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     overflow: hidden;
     animation: buttonFloat 3s ease-in-out infinite;
+    margin-left: 10px; /* 整体右移10像素 */
 }
 
 @keyframes buttonFloat {
@@ -822,6 +879,57 @@ body {
             0 12px 20px rgba(51, 51, 51, 0.4),
             0 0 20px rgba(0, 0, 0, 0.2);
     }
+}
+
+/* 高难度模式按钮样式（金色按钮） */
+#hardModeButton {
+    position: relative;
+    width: 22em; /* 从16em变宽，以容纳一行文字 */
+    height: 3em;
+    background: linear-gradient(145deg, #FFD700, #FFA500);
+    border: 2px solid #FFD700;
+    border-radius: 10px;
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
+    transition: all 0.3s ease;
+    margin-top: calc(1em + 15px); /* 下移15像素 */
+    margin-left: 10px; /* 与startButton对齐，右移10像素 */
+}
+
+#hardModeButton span {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.8em; /* 从1.2em放大1.5倍 (1.2em * 1.5 = 1.8em) */
+    font-weight: bold;
+    color: #000;
+    text-shadow: 1px 1px 2px rgba(255, 215, 0, 0.5);
+    letter-spacing: 1px;
+    white-space: nowrap; /* 文字写成一排，不换行 */
+}
+
+#hardModeButton:hover {
+    background: linear-gradient(145deg, #FFE135, #FFD700);
+    border-color: #FFD700;
+    box-shadow: 0 4px 12px rgba(255, 215, 0, 0.6);
+    transform: translateY(-2px);
+}
+
+#hardModeButton:hover span {
+    color: #000;
+    text-shadow: 1px 1px 3px rgba(255, 215, 0, 0.7);
+}
+
+#hardModeButton:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(255, 215, 0, 0.4);
 }
 
 .start-prompt p {
@@ -1025,6 +1133,31 @@ body {
     width: 90%;
 }
 
+.keyboard-guide {
+    margin: 20px 0 30px 0;
+    text-align: center;
+}
+
+.keyboard-guide h3 {
+    color: #FFD700;
+    font-size: 1.5em;
+    margin: 0 0 15px 0;
+    text-align: center;
+    text-shadow: 0 0 10px rgba(255,215,0,0.5);
+    border-bottom: 2px solid rgba(255,215,0,0.3);
+    padding-bottom: 10px;
+}
+
+.keyboard-image {
+    width: 100%;
+    max-width: 550px;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
 .powerup-guide {
     margin: 20px 0;
     text-align: left;
@@ -1188,6 +1321,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    max-height: 170px;
+    overflow-y: auto;
 }
 
 .game-over-rank-item {
@@ -1320,6 +1455,389 @@ body {
     position: absolute;
     top: 50%;
     left: 50%;
+}
+
+/* 新手教学关卡选择界面 */
+#tutorialLevelSelect {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 832px;
+    height: 1480px;
+    background-image: url('image/bg.png');
+    background-size: 832px 1480px;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    box-sizing: border-box;
+}
+
+/* 半透明卡片容器 */
+.tutorial-card {
+    width: 90%;
+    max-width: 700px;
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(15px);
+    border: 4px solid rgba(255, 215, 0, 0.8);
+    border-radius: 20px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8), 
+                0 0 30px rgba(255, 215, 0, 0.3),
+                inset 0 0 20px rgba(255, 215, 0, 0.1);
+    padding: 25px 40px 40px 40px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+}
+
+#tutorialLevelSelect h2 {
+    color: #FFD700;
+    font-size: 2.5em;
+    margin-bottom: 40px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.tutorial-levels {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    max-width: 600px;
+    margin-bottom: 40px;
+}
+
+.tutorial-level-item {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(240, 240, 240, 0.9));
+    border: 3px solid #000000;
+    border-radius: 15px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tutorial-level-item:hover:not(.locked) {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 1), rgba(248, 248, 248, 1));
+}
+
+.tutorial-level-item.locked {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: linear-gradient(145deg, rgba(200, 200, 200, 0.7), rgba(180, 180, 180, 0.7));
+}
+
+.level-number {
+    font-size: 2em;
+    font-weight: bold;
+    color: #000000;
+    min-width: 60px;
+    text-align: center;
+}
+
+.level-title {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #000000;
+    flex: 1;
+    text-align: center;
+}
+
+.level-status {
+    font-size: 1.2em;
+    color: #666666;
+    min-width: 120px;
+    text-align: right;
+}
+
+.level-status.unlocked {
+    color: #00AA00;
+    font-weight: bold;
+}
+
+.tutorial-back-btn {
+    background: linear-gradient(145deg, #ffffff, #f0f0f0);
+    border: 3px solid #000000;
+    border-radius: 10px;
+    padding: 15px 40px;
+    font-size: 1.3em;
+    font-weight: bold;
+    color: #000000;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 关卡说明界面中的返回按钮，宽度与开始挑战按钮一致 */
+#tutorialLevelInfo .tutorial-back-btn {
+    width: auto;
+    min-width: 200px;
+    padding: 15px 50px;
+}
+
+/* 关卡结束界面中的按钮，宽度保持一致 */
+#tutorialLevelEnd .tutorial-next-btn,
+#tutorialLevelEnd .tutorial-retry-btn,
+#tutorialLevelEnd .tutorial-back-btn {
+    width: auto;
+    min-width: 200px;
+}
+
+.tutorial-back-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, #f8f8f8, #e8e8e8);
+}
+
+.tutorial-back-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 关卡说明界面 */
+#tutorialLevelInfo {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 832px;
+    height: 1480px;
+    background-image: url('image/bg.png');
+    background-size: 832px 1480px;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 31;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    box-sizing: border-box;
+}
+
+/* 在关卡说明界面添加半透明遮罩层，增强卡片与背景的区分度 */
+#tutorialLevelInfo::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 0;
+}
+
+#tutorialLevelInfo > * {
+    position: relative;
+    z-index: 1;
+}
+
+#tutorialLevelInfo h2 {
+    color: #FFD700;
+    font-size: 2.5em;
+    margin-top: 0;
+    margin-bottom: 45px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.level-info-content {
+    background: rgba(0, 0, 0, 0.7);
+    border: 3px solid #FFD700;
+    border-radius: 15px;
+    padding: 30px;
+    max-width: 600px;
+    width: 100%;
+    margin-bottom: 30px;
+    color: #FFFFFF;
+}
+
+.level-info-image {
+    padding: 0;
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+.level-info-image img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.level-info-text h3 {
+    color: #FFD700;
+    font-size: 1.5em;
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+.level-info-text h3:first-child {
+    margin-top: 0;
+}
+
+.level-info-text p {
+    font-size: 1.2em;
+    line-height: 1.6;
+    margin-bottom: 10px;
+}
+
+.key-hint {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid #FFD700;
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-weight: bold;
+    color: #FFD700;
+}
+
+.tutorial-start-btn {
+    background: linear-gradient(145deg, #FFD700, #FFA500);
+    border: 3px solid #000000;
+    border-radius: 10px;
+    padding: 15px 50px;
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #000000;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    margin-bottom: 20px;
+    width: auto;
+    min-width: 200px;
+}
+
+.tutorial-start-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, #FFE500, #FFB500);
+}
+
+.tutorial-start-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 关卡结束界面 */
+#tutorialLevelEnd {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 832px;
+    height: 1480px;
+    background-image: url('image/bg.png');
+    background-size: 832px 1480px;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 32;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    box-sizing: border-box;
+}
+
+#tutorialLevelEnd > * {
+    position: relative;
+    z-index: 1;
+}
+
+#tutorialLevelEnd h2 {
+    color: #FFD700;
+    font-size: 3em;
+    margin-bottom: 30px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.level-end-message {
+    font-size: 1.8em;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.level-end-message.success {
+    color: #00FF00;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.level-end-message.failed {
+    color: #FF0000;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.level-end-distance {
+    font-size: 1.5em;
+    color: #FFFFFF;
+    margin-bottom: 40px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* 关卡结束界面按钮容器 */
+.tutorial-level-end-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    align-items: center;
+}
+
+/* 下一关按钮 */
+.tutorial-next-btn {
+    background: linear-gradient(145deg, #FFD700, #FFA500);
+    border: 3px solid #000000;
+    border-radius: 10px;
+    padding: 15px 50px;
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #000000;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tutorial-next-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, #FFE500, #FFB500);
+}
+
+.tutorial-next-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 重新挑战按钮 */
+.tutorial-retry-btn {
+    background: linear-gradient(145deg, #FF6B6B, #FF5252);
+    border: 3px solid #000000;
+    border-radius: 10px;
+    padding: 15px 50px;
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #FFFFFF;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tutorial-retry-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(145deg, #FF7B7B, #FF6262);
+}
+
+.tutorial-retry-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 

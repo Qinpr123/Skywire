@@ -1488,10 +1488,13 @@ class TightropeGame {
                             allCompleted = false;
                         }
                     } else {
-                        // 其他关卡：检查completed状态或距离记录
-                        // 如果有completed状态，优先使用；否则使用距离记录判断
-                        if (isCompleted || (bestDistance && bestDistance > 0)) {
-                            statusEl.textContent = `已通关 • ${bestDistance || 0}m`;
+                        // 其他关卡：必须completed状态为true才显示"已通关"
+                        if (isCompleted && bestDistance && bestDistance > 0) {
+                            statusEl.textContent = `已通关 • ${bestDistance}m`;
+                        } else if (bestDistance && bestDistance > 0) {
+                            // 有距离记录但未通关，显示距离但不显示"已通关"
+                            statusEl.textContent = `已尝试 • ${bestDistance}m`;
+                            allCompleted = false; // 未通关
                         } else {
                             statusEl.textContent = '已解锁';
                             allCompleted = false;
@@ -2884,11 +2887,11 @@ class TightropeGame {
                 type = 'explosion';
                 this.tutorialLevel3BombSpawned = true;
             } else {
-                // 调整概率：平衡45%，失衡35%，炸弹20%
+                // 调整概率：平衡35%，失衡40%，炸弹25%
                 const rand = Math.random();
-                if (rand < 0.45) {
+                if (rand < 0.35) {
                     type = 'balance';
-                } else if (rand < 0.8) {
+                } else if (rand < 0.75) {
                     type = 'unbalance';
                 } else {
                     type = 'explosion';

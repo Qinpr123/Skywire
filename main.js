@@ -2884,11 +2884,11 @@ class TightropeGame {
                 type = 'explosion';
                 this.tutorialLevel3BombSpawned = true;
             } else {
-                // 调整概率：平衡40%，失衡30%，炸弹30%
+                // 调整概率：平衡45%，失衡35%，炸弹20%
                 const rand = Math.random();
-                if (rand < 0.4) {
+                if (rand < 0.45) {
                     type = 'balance';
-                } else if (rand < 0.7) {
+                } else if (rand < 0.8) {
                     type = 'unbalance';
                 } else {
                     type = 'explosion';

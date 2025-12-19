@@ -1201,11 +1201,9 @@ class TightropeGame {
                     return style.display !== 'none' && style.visibility !== 'hidden';
                 };
                 
-                // 如果其他界面显示，不响应空格键（暂停界面除外，因为需要支持继续游戏）
+                // 如果其他界面显示，不响应空格键（暂停界面、gameOver界面和tutorialLevelInfo界面除外）
                 if (isElementVisible(tutorialLevelSelect) || 
-                    isElementVisible(tutorialLevelInfo) || 
-                    isElementVisible(tutorialLevelEnd) || 
-                    isElementVisible(gameOver)) {
+                    isElementVisible(tutorialLevelEnd)) {
                     return;
                 }
                 
@@ -1217,6 +1215,30 @@ class TightropeGame {
                 // 如果游戏正在运行且暂停界面显示，按空格键继续游戏
                 if (this.gameRunning && isElementVisible(pauseScreen)) {
                     this.togglePause();
+                    return;
+                }
+                
+                // 如果关卡介绍界面显示，按空格键开始关卡挑战
+                if (isElementVisible(tutorialLevelInfo)) {
+                    if (!this.gameRunning && this.currentTutorialLevel > 0) {
+                        this.startTutorialLevel(this.currentTutorialLevel);
+                    }
+                    return;
+                }
+                
+                // 如果gameOver界面显示，按空格键重新挑战
+                if (isElementVisible(gameOver)) {
+                    if (!this.gameRunning) {
+                        // 停止结算界面的音效
+                        this.stopFailSound();
+                        this.stopClapsSound();
+                        // 检查是否有用户，如果没有则显示用户选择界面
+                        if (!this.currentUser) {
+                            this.showUserSelection();
+                            return;
+                        }
+                        this.startGame();
+                    }
                     return;
                 }
                 
@@ -1945,11 +1967,7 @@ class TightropeGame {
             this.saveTutorialLevelDistance(this.currentTutorialLevel, this.distance);
         }
         
-        // 如果失败，确保不标记为已通关（特别是关卡3）
-        if (!success && this.currentTutorialLevel === 3) {
-            this.tutorialLevelCompletedStatus[3] = false;
-            this.saveTutorialProgress();
-        }
+        // 注意：一旦通关，completed状态应该永久保持，不会因为后续失败而被清除
         
         endScreen.style.display = 'flex';
     }
